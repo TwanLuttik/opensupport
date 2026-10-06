@@ -1,0 +1,41 @@
+{
+  "name": "@open-support/server",
+  "version": "0.1.0",
+  "description": "Self-hosted backend for the Open Support Bubble widget and REST integrations.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "open-support-server": "./dist/cli.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "dashboard"
+  ],
+  "scripts": {
+    "dev": "tsx watch src/cli.ts",
+    "start": "node dist/cli.js",
+    "build": "tsc -p tsconfig.json && node scripts/copy-dashboard.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "tsx --test src/**/*.test.ts"
+  },
+  "dependencies": {
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.10",
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.2"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "license": "MIT"
+}
