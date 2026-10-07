@@ -62,12 +62,11 @@ export function AiUsage() {
 
   const quiet = usage.conversations === 0 && usage.replies === 0;
   return (
-    <div className="settings">
-      <div className="page-intro">
-        <p className="kicker">Agent</p>
-        <h1>AI usage</h1>
+    <>
+      <section className="panel">
+        <h2>AI</h2>
         <p className="muted">How often visitors talk to the AI, and what those replies have cost so far.</p>
-      </div>
+      </section>
       <section className="panel">
         <h2>{quiet ? "No AI chats yet" : money(usage.estimatedCostUsd)}</h2>
         <p className="muted">
@@ -116,7 +115,7 @@ export function AiUsage() {
           </div>
         ))}
       </section>
-    </div>
+    </>
   );
 }
 

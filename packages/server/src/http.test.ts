@@ -294,7 +294,74 @@ test("dashboard session configures widget, webhooks, and telegram", async () => 
     });
     assert.equal(widget.status, 200);
     const pub = await fetch(`${base}/api/widget/config`);
-    assert.equal(((await pub.json()) as { title: string }).title, "Help");
+    const published = (await pub.json()) as {
+      title: string;
+      accentColor: string;
+      theme: { id: string; colors: { accent: string; panel: string } };
+    };
+    assert.equal(published.title, "Help");
+    assert.equal(published.accentColor, "#112233");
+    assert.equal(published.theme.id, "ink");
+    assert.equal(published.theme.colors.accent, "#112233");
+    assert.equal(published.theme.colors.panel, "#ffffff");
+
+    const themed = await fetch(`${base}/api/dashboard/widget`, {
+      method: "PUT",
+      headers: { "content-type": "application/json", cookie: cookie! },
+      body: JSON.stringify({
+        title: "Help",
+        subtitle: "We are here",
+        accentColor: "#7c3aed",
+        placeholder: "Ask",
+        greeting: "Welcome",
+        theme: {
+          id: "custom",
+          colors: {
+            accent: "#7c3aed",
+            accentText: "#ffffff",
+            header: "#4c1d95",
+            headerText: "#f5f3ff",
+            panel: "#faf5ff",
+            canvas: "#f3e8ff",
+            ink: "#2e1065",
+            muted: "#6b21a8",
+            agentBubble: "#ffffff",
+            composer: "#faf5ff",
+          },
+        },
+      }),
+    });
+    assert.equal(themed.status, 200);
+    const custom = (await (await fetch(`${base}/api/widget/config`)).json()) as {
+      accentColor: string;
+      theme: { id: string; colors: { header: string; canvas: string } };
+    };
+    assert.equal(custom.accentColor, "#7c3aed");
+    assert.equal(custom.theme.id, "custom");
+    assert.equal(custom.theme.colors.header, "#4c1d95");
+    assert.equal(custom.theme.colors.canvas, "#f3e8ff");
+
+    const template = await fetch(`${base}/api/dashboard/widget`, {
+      method: "PUT",
+      headers: { "content-type": "application/json", cookie: cookie! },
+      body: JSON.stringify({
+        title: "Help",
+        subtitle: "We are here",
+        accentColor: "#111827",
+        placeholder: "Ask",
+        greeting: "Welcome",
+        theme: { id: "ocean" },
+      }),
+    });
+    assert.equal(template.status, 200);
+    const ocean = (await (await fetch(`${base}/api/widget/config`)).json()) as {
+      accentColor: string;
+      theme: { id: string; colors: { accent: string; header: string } };
+    };
+    assert.equal(ocean.theme.id, "ocean");
+    assert.equal(ocean.accentColor, "#1d4ed8");
+    assert.equal(ocean.theme.colors.accent, "#1d4ed8");
+    assert.equal(ocean.theme.colors.header, "#1e3a8a");
 
     const access = await fetch(`${base}/api/dashboard/access`, {
       method: "PUT",
@@ -671,6 +738,9 @@ test("a signed-in agent who stays at the desk shows as online", async () => {
     assert.equal(beat.status, 200);
     const online = (await (await fetch(`${base}/api/widget/config`)).json()) as { staffOnline: boolean };
     assert.equal(online.staffOnline, true);
+    const { responseTimeLabel } = await import("./http.js");
+    assert.equal(responseTimeLabel(30), "Usually accepted in under a minute");
+    assert.equal(responseTimeLabel(120), "Usually accepted in 2 min");
     const away = await fetch(`${base}/api/dashboard/presence`, {
       method: "POST",
       headers: { "content-type": "application/json", cookie: cookie! },

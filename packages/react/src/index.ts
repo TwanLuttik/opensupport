@@ -17,6 +17,9 @@ export {
 export type {
   Attachment,
   AuthorRole,
+  BubbleTheme,
+  BubbleThemeColors,
+  BubbleThemeId,
   FormField,
   FormFieldType,
   PublicConfig,

@@ -6,6 +6,7 @@ import type {
   AccountRole,
   AiUsageEntry,
   AiUsageSummary,
+  DeskStats,
   ApiTokenRecord,
   Attachment,
   Conversation,
@@ -205,6 +206,7 @@ export class SupportStore {
     this.ensureColumn("conversations", "rating", "TEXT");
     this.ensureColumn("conversations", "rating_comment", "TEXT");
     this.ensureColumn("conversations", "rated_at", "TEXT");
+    this.ensureColumn("conversations", "accepted_at", "TEXT");
     this.ensureColumn("accounts", "avatar_url", "TEXT");
     this.ensureColumn("accounts", "presence", "TEXT NOT NULL DEFAULT 'online'");
     this.ensureColumn("accounts", "last_seen_at", "TEXT");
@@ -243,13 +245,15 @@ export class SupportStore {
       if (!legacy) return base;
       return { ...base, widget: { ...base.widget, ...(JSON.parse(legacy.value) as Partial<PublicConfig>) } };
     }
-    const parsed = settingsSchema.safeParse(JSON.parse(row.value));
+    const stored = JSON.parse(row.value) as { widget?: Parameters<typeof normalizeWidget>[0] };
+    if (stored.widget) stored.widget = normalizeWidget(stored.widget);
+    const parsed = settingsSchema.safeParse(stored);
     if (!parsed.success) return base;
-    return { ...parsed.data, widget: normalizeWidget(parsed.data.widget) };
+    return parsed.data;
   }
 
   saveSettings(settings: ServerSettings): ServerSettings {
-    const value = settingsSchema.parse(settings);
+    const value = settingsSchema.parse({ ...settings, widget: normalizeWidget(settings.widget) });
     this.db
       .prepare(
         `INSERT INTO settings (key, value) VALUES ('server', ?)
@@ -524,13 +528,15 @@ export class SupportStore {
     const current = this.getConversation(id);
     if (!current) return null;
     const assignedAt = nowIso();
+    const firstAccept = current.assigneeName ? null : assignedAt;
     this.db
       .prepare(
         `UPDATE conversations
-         SET assignee_id = ?, assignee_name = ?, assignee_avatar_url = ?, assigned_at = ?, agent_name = ?, updated_at = ?
+         SET assignee_id = ?, assignee_name = ?, assignee_avatar_url = ?, assigned_at = ?, agent_name = ?, updated_at = ?,
+             accepted_at = COALESCE(accepted_at, ?)
          WHERE id = ?`,
       )
-      .run(assignee.id, assignee.name, assignee.avatarUrl ?? null, assignedAt, assignee.name, assignedAt, id);
+      .run(assignee.id, assignee.name, assignee.avatarUrl ?? null, assignedAt, assignee.name, assignedAt, firstAccept, id);
     this.addMessage(id, {
       role: "system",
       body: `${assignee.name} joined the conversation`,
@@ -561,6 +567,19 @@ export class SupportStore {
       );
     if (patch.status === "closed") this.closeOpenPage(id);
     return this.getConversation(id);
+  }
+
+  /**
+   * Ends a live chat from the desk. The visitor sees who ended it, and can no longer reply.
+   * Closing again is a no-op so a second click does not post another line.
+   */
+  endConversation(id: string, agentName?: string | null): Conversation | null {
+    const current = this.getConversation(id);
+    if (!current) return null;
+    if (current.status === "closed") return current;
+    const who = agentName?.trim() || current.assigneeName?.trim() || "An agent";
+    this.addMessage(id, { role: "system", body: `${who} ended the conversation`, agentName: who });
+    return this.updateConversation(id, { status: "closed" });
   }
 
   /** Stops the live page timer when the conversation ends. */
@@ -914,6 +933,56 @@ export class SupportStore {
   /** Refreshes the heartbeat without changing an away choice. */
   touchAccount(id: string): void {
     this.db.prepare("UPDATE accounts SET last_seen_at = ? WHERE id = ?").run(nowIso(), id);
+  }
+
+  /**
+   * Mean wait, in seconds, from a human chat opening until the first agent accepted it.
+   * AI chats are skipped. Null until at least one ticket has been accepted.
+   */
+  averageAcceptSeconds(): number | null {
+    return this.deskStats().averageResponseSeconds;
+  }
+
+  /** Averages for the statistics page. AI chats are left out of the waits and durations. */
+  deskStats(): DeskStats {
+    const response = this.db
+      .prepare(
+        `SELECT AVG((julianday(accepted_at) - julianday(created_at)) * 86400) AS seconds, COUNT(*) AS samples
+         FROM conversations
+         WHERE accepted_at IS NOT NULL
+           AND json_extract(metadata_json, '$.handler') IS NOT 'ai'`,
+      )
+      .get() as { seconds: number | null; samples: number };
+    const ratings = this.db
+      .prepare(
+        `SELECT
+           SUM(CASE WHEN rating = 'up' THEN 1 ELSE 0 END) AS up,
+           SUM(CASE WHEN rating = 'down' THEN 1 ELSE 0 END) AS down,
+           SUM(CASE WHEN rating = 'skipped' THEN 1 ELSE 0 END) AS skipped
+         FROM conversations
+         WHERE rating IS NOT NULL`,
+      )
+      .get() as { up: number | null; down: number | null; skipped: number | null };
+    const duration = this.db
+      .prepare(
+        `SELECT AVG((julianday(updated_at) - julianday(created_at)) * 86400) AS seconds, COUNT(*) AS samples
+         FROM conversations
+         WHERE status = 'closed'
+           AND json_extract(metadata_json, '$.handler') IS NOT 'ai'`,
+      )
+      .get() as { seconds: number | null; samples: number };
+    const up = Number(ratings.up ?? 0);
+    const down = Number(ratings.down ?? 0);
+    return {
+      averageResponseSeconds: response.samples && response.seconds !== null ? Math.max(0, Math.round(response.seconds)) : null,
+      responseSamples: Number(response.samples),
+      averageRating: up + down > 0 ? up / (up + down) : null,
+      ratingUp: up,
+      ratingDown: down,
+      ratingSkipped: Number(ratings.skipped ?? 0),
+      averageConversationSeconds: duration.samples && duration.seconds !== null ? Math.max(0, Math.round(duration.seconds)) : null,
+      conversationSamples: Number(duration.samples),
+    };
   }
 
   /** At least one signed-in person is at the desk right now. */

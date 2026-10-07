@@ -5,10 +5,14 @@ export { createApiToken, parseApiToken } from "./crypto.js";
 export { deliverEvent, signBody } from "./notify.js";
 export { OPENAI_MODELS, buildAiMessages, completeOpenAi } from "./ai.js";
 export { estimateCost } from "./pricing.js";
+export { BUBBLE_THEMES, defaultBubbleTheme, resolveBubbleTheme } from "./themes.js";
 export type {
   Account,
   AccountRole,
   AiSettings,
+  BubbleTheme,
+  BubbleThemeColors,
+  BubbleThemeId,
   AiUsageEntry,
   AiUsageSummary,
   Attachment,

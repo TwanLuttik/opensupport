@@ -2,13 +2,13 @@ import { useEffect, useState } from "react";
 import { NavLink, Navigate, Route, Routes, useNavigate } from "react-router-dom";
 import { api } from "./api.js";
 import { AccountPage } from "./Account.js";
-import { AiUsage } from "./AiUsage.js";
 import { Docs } from "./Docs.js";
 import { Hours } from "./Hours.js";
 import { Inbox } from "./Inbox.js";
 import { Login } from "./Login.js";
 import { Reviews } from "./Reviews.js";
 import { Settings } from "./Settings.js";
+import { Statistics } from "./Statistics.js";
 import { useTheme } from "./theme.js";
 import { ThemeButton } from "./ThemeButton.js";
 import type { Account, LoginMode, SessionResponse } from "./types.js";
@@ -17,7 +17,7 @@ const PAGES = [
   { to: "/inbox", label: "Inbox", admin: false },
   { to: "/settings", label: "Settings", admin: false },
   { to: "/hours", label: "Hours", admin: false },
-  { to: "/ai", label: "AI usage", admin: false },
+  { to: "/statistics", label: "Statistics", admin: false },
   { to: "/reviews", label: "Reviews", admin: true },
   { to: "/docs", label: "Docs", admin: false },
 ] as const;
@@ -180,7 +180,8 @@ export function App() {
           <Route path="/hours" element={<Hours />} />
           <Route path="/account" element={me ? <AccountPage me={me} onChange={setMe} /> : <Navigate to="/inbox" replace />} />
           <Route path="/accounts" element={<Navigate to="/settings/accounts" replace />} />
-          <Route path="/ai" element={<AiUsage />} />
+          <Route path="/statistics/*" element={<Statistics />} />
+          <Route path="/ai" element={<Navigate to="/statistics/ai" replace />} />
           <Route path="/reviews" element={canManage ? <Reviews /> : <Navigate to="/inbox" replace />} />
           <Route path="/docs" element={<Docs />} />
           <Route path="*" element={<Navigate to="/inbox" replace />} />

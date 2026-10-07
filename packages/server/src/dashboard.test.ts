@@ -20,6 +20,8 @@ test("a refresh of a dashboard screen returns the app shell", () => {
     assert.match(nested?.body.toString() ?? "", /src="\/assets\/index.js"/);
     assert.equal(dashboardFile("/settings/ai")?.type.startsWith("text/html"), true);
     assert.equal(dashboardFile("/settings/agent")?.type.startsWith("text/html"), true);
+    assert.equal(dashboardFile("/statistics/ai")?.type.startsWith("text/html"), true);
+    assert.equal(dashboardFile("/statistics/general")?.type.startsWith("text/html"), true);
     const asset = dashboardFile("/assets/index.js");
     assert.equal(asset?.type.startsWith("text/javascript"), true);
     assert.equal(dashboardFile("/assets/missing.js"), null);

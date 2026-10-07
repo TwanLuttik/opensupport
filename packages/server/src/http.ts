@@ -7,7 +7,7 @@ import { SupportStore } from "./db.js";
 import { checkTelegram, deliverEvent, pollTelegram, type NotifyPayload } from "./notify.js";
 import { OPENAI_SECRET_KEY, buildAiMessages, isOpenAiModel, runOpenAi } from "./ai.js";
 import { SlidingWindow, clientAddress } from "./ratelimit.js";
-import { hoursSchema, isOpenNow, settingsSchema, toSettingsView, widgetSchema } from "./settings.js";
+import { hoursSchema, isOpenNow, normalizeWidget, settingsSchema, toSettingsView, widgetSchema } from "./settings.js";
 import { DASHBOARD_PAGES, dashboardFile, dashboardMissingHtml } from "./dashboard.js";
 import type { Account, Attachment, ServerSettings, WebhookEndpoint, WebhookEvent } from "./types.js";
 import { prepareImageUpload, prepareUpload, readBody, serveUpload, UploadStore, UPLOAD_CHUNK_BYTES } from "./uploads.js";
@@ -44,8 +44,11 @@ const tokenSchema = z.object({
 
 const configSchema = widgetSchema;
 
-function parseWidget(input: z.input<typeof configSchema>) {
-  return configSchema.parse(input);
+function parseWidget(input: unknown) {
+  if (!input || typeof input !== "object") {
+    throw Object.assign(new Error("Widget settings are required"), { statusCode: 400 });
+  }
+  return normalizeWidget(input as Parameters<typeof normalizeWidget>[0]);
 }
 
 const assignSchema = z.object({
@@ -111,6 +114,16 @@ const aiInputSchema = z.object({
 const aiContextSchema = z.object({
   context: z.string().max(50000),
 });
+
+/** A short line for the bubble, such as "Usually accepted in 2 min". */
+export function responseTimeLabel(seconds: number): string {
+  if (seconds < 60) return "Usually accepted in under a minute";
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `Usually accepted in ${minutes} min`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 48) return `Usually accepted in ${hours} hr`;
+  return `Usually accepted in ${Math.round(hours / 24)} days`;
+}
 
 const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 14;
 const SESSION_COOKIE = "osb_session";
@@ -318,6 +331,13 @@ export function createApp(config: ServerConfig): SupportApp {
     });
   }
 
+  function responseTimePublic(settings: ServerSettings) {
+    if (!settings.widget.showResponseTime) return null;
+    const seconds = store.averageAcceptSeconds();
+    if (seconds === null) return null;
+    return { seconds, label: responseTimeLabel(seconds) };
+  }
+
   function aiPublic(settings: ServerSettings) {
     const ready = settings.ai.enabled && Boolean(store.getSecret(OPENAI_SECRET_KEY));
     return {
@@ -417,6 +437,7 @@ export function createApp(config: ServerConfig): SupportApp {
           },
           ai: aiPublic(settings),
           staffOnline: store.staffOnline(),
+          responseTime: responseTimePublic(settings),
         });
         return;
       }
@@ -661,6 +682,12 @@ export function createApp(config: ServerConfig): SupportApp {
         );
         const updated = store.rateConversation(conversation.id, body.rating, body.comment);
         send(res, 200, { conversation: updated });
+        return;
+      }
+
+      if (path === "/api/dashboard/stats" && req.method === "GET") {
+        if (!requireDashboard(req, res)) return;
+        send(res, 200, { stats: store.deskStats() });
         return;
       }
 
@@ -979,7 +1006,7 @@ export function createApp(config: ServerConfig): SupportApp {
 
       if (path === "/api/dashboard/widget" && req.method === "PUT") {
         if (!requireDashboard(req, res)) return;
-        const widget = parseWidget(await readJson(req, configSchema));
+        const widget = parseWidget(await readJson(req, z.unknown()));
         const saved = store.saveSettings({ ...currentSettings(), widget });
         send(res, 200, { widget: saved.widget });
         return;
@@ -1247,7 +1274,24 @@ export function createApp(config: ServerConfig): SupportApp {
       if (conversationPath && req.method === "PATCH") {
         if (!requireInbox(req, res)) return;
         const body = await readJson(req, patchConversationSchema);
-        const updated = store.updateConversation(conversationPath[1]!, body);
+        const conversationId = conversationPath[1]!;
+        if (body.status === "closed") {
+          const account = sessionAccount(req);
+          const ended = store.endConversation(conversationId, account?.name ?? null);
+          if (!ended) {
+            send(res, 404, { error: "Conversation not found" });
+            return;
+          }
+          if (body.visitorName !== undefined || body.visitorEmail !== undefined) {
+            store.updateConversation(conversationId, {
+              visitorName: body.visitorName,
+              visitorEmail: body.visitorEmail,
+            });
+          }
+          send(res, 200, { conversation: store.getConversationWithMessages(conversationId) });
+          return;
+        }
+        const updated = store.updateConversation(conversationId, body);
         if (!updated) {
           send(res, 404, { error: "Conversation not found" });
           return;

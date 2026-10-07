@@ -4,12 +4,13 @@ import { Accounts } from "./Accounts.js";
 import { api, authHeaders, uploadImage } from "./api.js";
 import { Status } from "./components.js";
 import { fieldId } from "./format.js";
-import type { AiSettingsView, ApiToken, FormFieldDraft, NotifyEvent, QuickAction, SettingsView, Webhook, WidgetSettings } from "./types.js";
+import { COLOR_FIELDS, presetById, THEME_PRESETS, themeFromWidget } from "./themes.js";
+import type { AiSettingsView, ApiToken, BubbleThemeColors, BubbleThemeId, FormFieldDraft, NotifyEvent, QuickAction, SettingsView, Webhook, WidgetSettings } from "./types.js";
 
 const EMPTY_STATUS = { text: "", ok: false };
 
 const SECTIONS = [
-  { to: "/settings/appearance", label: "Appearance", hint: "Name, color, greeting", admin: false },
+  { to: "/settings/appearance", label: "Appearance", hint: "Theme, name, greeting", admin: false },
   { to: "/settings/start", label: "Start screen", hint: "Topics and the form", admin: false },
   { to: "/settings/ai", label: "AI models", hint: "OpenAI key and model", admin: false },
   { to: "/settings/agent", label: "AI agent", hint: "Knowledge the agent uses", admin: false },
@@ -56,7 +57,7 @@ export function Settings({ adminKey, canManage }: { adminKey: string; canManage:
 
   async function load() {
     const { settings } = await api<{ settings: SettingsView }>("/api/dashboard/settings");
-    setWidget(settings.widget);
+    setWidget({ ...settings.widget, theme: themeFromWidget(settings.widget.theme, settings.widget.accentColor) });
     setFields(settings.widget.formFields.map((field) => ({ ...field, options: field.options.slice() })));
     setActions((settings.widget.quickActions ?? []).map((action) => ({ ...action })));
     setCors(settings.corsOrigin);
@@ -142,15 +143,18 @@ export function Settings({ adminKey, canManage }: { adminKey: string; canManage:
                   onSubmit={async (event) => {
                     event.preventDefault();
                     try {
+                      const theme = themeFromWidget(widget.theme, widget.accentColor);
                       await saveWidget(
                         {
                           title: widget.title,
                           subtitle: widget.subtitle,
-                          accentColor: widget.accentColor,
+                          accentColor: theme.colors.accent,
+                          theme,
                           placeholder: widget.placeholder,
                           greeting: widget.greeting,
                           waitingMessage: widget.waitingMessage,
                           logoUrl: widget.logoUrl,
+                          showResponseTime: widget.showResponseTime,
                         },
                         setWidgetStatus,
                       );
@@ -419,38 +423,38 @@ function Appearance({
   onChange: (patch: Partial<WidgetSettings>) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
 }) {
+  const theme = themeFromWidget(widget.theme, widget.accentColor);
+
+  function chooseTheme(id: BubbleThemeId) {
+    if (id === "custom") {
+      onChange({ theme: { id: "custom", colors: { ...theme.colors } }, accentColor: theme.colors.accent });
+      return;
+    }
+    const preset = presetById(id);
+    if (!preset) return;
+    onChange({ theme: { id: preset.id, colors: { ...preset.colors } }, accentColor: preset.colors.accent });
+  }
+
+  function paint(key: keyof BubbleThemeColors, value: string) {
+    const colors = { ...theme.colors, [key]: value };
+    onChange({
+      theme: { id: "custom", colors },
+      accentColor: key === "accent" && /^#[0-9a-fA-F]{6}$/.test(value) ? value : colors.accent,
+    });
+  }
+
   return (
     <Panel
       title="Appearance"
-      summary="What visitors see in the bubble header and the composer."
+      summary="Pick a bubble theme, or customize the colors. Visitors see the change after you save."
       onSubmit={onSubmit}
       status={status}
       saveLabel="Save appearance"
     >
-      <div className="split">
-        <Field label="Title" htmlFor="title">
-          <input className="input" id="title" value={widget.title} required onChange={(event) => onChange({ title: event.target.value })} />
-        </Field>
-        <Field label="Accent" htmlFor="accent">
-          <div className="color-row">
-            <input
-              id="accent-picker"
-              type="color"
-              value={/^#[0-9a-fA-F]{6}$/.test(widget.accentColor) ? widget.accentColor : "#111827"}
-              aria-label="Pick accent color"
-              onChange={(event) => onChange({ accentColor: event.target.value })}
-            />
-            <input
-              className="input"
-              id="accent"
-              value={widget.accentColor}
-              required
-              pattern="#[0-9a-fA-F]{6}"
-              onChange={(event) => onChange({ accentColor: event.target.value })}
-            />
-          </div>
-        </Field>
-      </div>
+      <ThemePicker themeId={theme.id} colors={theme.colors} title={widget.title} onChoose={chooseTheme} onPaint={paint} />
+      <Field label="Title" htmlFor="title">
+        <input className="input" id="title" value={widget.title} required onChange={(event) => onChange({ title: event.target.value })} />
+      </Field>
       <Field label="Subtitle" htmlFor="subtitle">
         <input className="input" id="subtitle" value={widget.subtitle} required onChange={(event) => onChange({ subtitle: event.target.value })} />
       </Field>
@@ -463,8 +467,128 @@ function Appearance({
       <Field label="Waiting message" htmlFor="waiting" hint="Shown until someone assigns the ticket.">
         <input className="input" id="waiting" value={widget.waitingMessage} required onChange={(event) => onChange({ waitingMessage: event.target.value })} />
       </Field>
+      <label className="check">
+        <input
+          type="checkbox"
+          checked={widget.showResponseTime}
+          onChange={(event) => onChange({ showResponseTime: event.target.checked })}
+        />
+        Show the average time to accept a ticket in the bubble
+      </label>
       <LogoField logoUrl={widget.logoUrl} onChange={(logoUrl) => onChange({ logoUrl })} />
     </Panel>
+  );
+}
+
+function ThemePicker({
+  themeId,
+  colors,
+  title,
+  onChoose,
+  onPaint,
+}: {
+  themeId: BubbleThemeId;
+  colors: BubbleThemeColors;
+  title: string;
+  onChoose: (id: BubbleThemeId) => void;
+  onPaint: (key: keyof BubbleThemeColors, value: string) => void;
+}) {
+  return (
+    <div className="theme-block">
+      <p className="field-label">Theme</p>
+      <div className="theme-grid" role="radiogroup" aria-label="Bubble theme">
+        {THEME_PRESETS.map((preset) => (
+          <button
+            key={preset.id}
+            type="button"
+            role="radio"
+            aria-checked={themeId === preset.id}
+            className={themeId === preset.id ? "theme-card is-selected" : "theme-card"}
+            onClick={() => onChoose(preset.id)}
+          >
+            <ThemeSwatch colors={preset.colors} title={preset.name} />
+            <span>
+              <strong>{preset.name}</strong>
+              <small>{preset.description}</small>
+            </span>
+          </button>
+        ))}
+        <button
+          type="button"
+          role="radio"
+          aria-checked={themeId === "custom"}
+          className={themeId === "custom" ? "theme-card is-selected" : "theme-card"}
+          onClick={() => onChoose("custom")}
+        >
+          <ThemeSwatch colors={colors} title="Custom" />
+          <span>
+            <strong>Custom</strong>
+            <small>Change any color below.</small>
+          </span>
+        </button>
+      </div>
+      <ThemePreview colors={colors} title={title || "Support"} />
+      <div className="theme-colors">
+        {COLOR_FIELDS.map((field) => (
+          <ColorField
+            key={field.key}
+            label={field.label}
+            value={colors[field.key]}
+            onChange={(value) => onPaint(field.key, value)}
+          />
+        ))}
+      </div>
+      <p className="muted">Editing a color switches the theme to Custom. Pick a template again to restore its palette.</p>
+    </div>
+  );
+}
+
+function ThemeSwatch({ colors, title }: { colors: BubbleThemeColors; title: string }) {
+  return (
+    <span className="theme-swatch" style={{ background: colors.canvas }} aria-hidden="true">
+      <span className="theme-swatch-bar" style={{ background: colors.header, color: colors.headerText }}>{title}</span>
+      <span className="theme-swatch-row">
+        <span style={{ background: colors.agentBubble, color: colors.ink }}>Hi</span>
+        <span style={{ background: colors.accent, color: colors.accentText }}>Hello</span>
+      </span>
+    </span>
+  );
+}
+
+function ThemePreview({ colors, title }: { colors: BubbleThemeColors; title: string }) {
+  return (
+    <div className="theme-preview" style={{ background: colors.panel, color: colors.ink, borderColor: colors.ink }} aria-hidden="true">
+      <div className="theme-preview-head" style={{ background: colors.header, color: colors.headerText }}>
+        <strong>{title}</strong>
+        <span>We&apos;re online</span>
+      </div>
+      <div className="theme-preview-body" style={{ background: colors.canvas }}>
+        <span className="theme-preview-agent" style={{ background: colors.agentBubble, color: colors.ink, borderColor: colors.muted }}>
+          Hi! How can we help?
+        </span>
+        <span className="theme-preview-visitor" style={{ background: colors.accent, color: colors.accentText }}>
+          The checkout button is broken
+        </span>
+      </div>
+      <div className="theme-preview-compose" style={{ background: colors.composer, color: colors.muted, borderColor: colors.ink }}>
+        <span>Write a message…</span>
+        <span style={{ background: colors.accent, color: colors.accentText }}>Send</span>
+      </div>
+    </div>
+  );
+}
+
+function ColorField({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
+  const safe = /^#[0-9a-fA-F]{6}$/.test(value) ? value : "#111827";
+  const id = `theme-${label.toLowerCase().replace(/\s+/g, "-")}`;
+  return (
+    <label className="theme-color" htmlFor={id}>
+      <span>{label}</span>
+      <span className="color-row">
+        <input type="color" value={safe} aria-label={`Pick ${label}`} onChange={(event) => onChange(event.target.value)} />
+        <input className="input" id={id} value={value} pattern="#[0-9a-fA-F]{6}" onChange={(event) => onChange(event.target.value)} />
+      </span>
+    </label>
   );
 }
 

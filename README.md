@@ -41,7 +41,7 @@ On first boot without `ADMIN_KEY`, a one-time admin key is printed. Set `ADMIN_K
 | `UPLOAD_DIR` | `./data/uploads` | Attachment storage. Files stay on this disk, in 5 MB chunks, up to 50 MB |
 | `WIDGET_TITLE` | `Support` | Bubble title |
 | `WIDGET_SUBTITLE` | reply-time line | Header subtitle |
-| `WIDGET_ACCENT` | `#111827` | Accent color |
+| `WIDGET_ACCENT` | `#111827` | Accent color, used by the Ink theme until you save a theme |
 | `WIDGET_GREETING` | `Hi! How can we help?` | First system message |
 | `WIDGET_PLACEHOLDER` | `Write a message…` | Composer placeholder |
 
@@ -54,7 +54,7 @@ Open `http://localhost:8787/`. The first visit asks you to create an admin accou
 The admin key (`ADMIN_KEY`, or the key printed on first boot) still signs in. Use it to recover access. The session is an HttpOnly cookie that lasts 14 days.
 
 - **Inbox** lists every conversation. A new thread says it is waiting for an agent. Open it and click **Assign to me**. The visitor sees "<name> joined the conversation" and the header names the agent. You can also reply or close the thread.
-- **Widget** edits the title, subtitle, accent, placeholder, greeting, and the waiting message. The bubble reads these live. They override `WIDGET_*` once you save.
+- **Appearance** edits the title, subtitle, placeholder, greeting, waiting message, and the bubble theme. Pick a template (Ink, Paper, Forest, Ocean, or Dusk) or customize every color. The bubble reads these live. They override `WIDGET_*` once you save.
 - **Pre-chat form** asks the visitor to fill in fields you define (text, email, long text, or a dropdown) before a conversation starts. Turn it on from Settings. Answers are stored on the ticket. A field id of `name` or `email` also sets the visitor name or email.
 - **Access** sets the browser origins allowed to embed the widget (`*` or a comma-separated list). This overrides `CORS_ORIGIN` once you save.
 - **Webhooks** POST JSON to your URL for `conversation.created` and `message.created`. The signing secret is shown once. Requests include `X-Open-Support-Signature: sha256=<hmac of the raw body>`.

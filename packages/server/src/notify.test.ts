@@ -9,6 +9,21 @@ const widget: PublicConfig = {
   title: "Support",
   subtitle: "Hi",
   accentColor: "#111827",
+  theme: {
+    id: "ink",
+    colors: {
+      accent: "#111827",
+      accentText: "#ffffff",
+      header: "#111827",
+      headerText: "#ffffff",
+      panel: "#ffffff",
+      canvas: "#f4f5f7",
+      ink: "#16181d",
+      muted: "#6d727c",
+      agentBubble: "#ffffff",
+      composer: "#ffffff",
+    },
+  },
   placeholder: "Write",
   greeting: "Hello",
 };

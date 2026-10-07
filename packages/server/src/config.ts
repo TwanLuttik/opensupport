@@ -1,3 +1,4 @@
+import { defaultBubbleTheme } from "./themes.js";
 import type { PublicConfig } from "./types.js";
 
 export interface ServerConfig {
@@ -32,6 +33,7 @@ export function loadConfig(overrides: Partial<ServerConfig> = {}): ServerConfig 
       title: env("WIDGET_TITLE") ?? "Support",
       subtitle: env("WIDGET_SUBTITLE") ?? "We typically reply within a few minutes.",
       accentColor: env("WIDGET_ACCENT") ?? "#111827",
+      theme: defaultBubbleTheme(env("WIDGET_ACCENT") ?? "#111827"),
       placeholder: env("WIDGET_PLACEHOLDER") ?? "Write a message…",
       greeting: env("WIDGET_GREETING") ?? "Hi! How can we help?",
       formEnabled: false,
@@ -41,6 +43,7 @@ export function loadConfig(overrides: Partial<ServerConfig> = {}): ServerConfig 
       waitingMessage: "Waiting for an agent",
       quickActions: [],
       logoUrl: null,
+      showResponseTime: false,
     },
     ...overrides,
   };

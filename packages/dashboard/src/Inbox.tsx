@@ -39,12 +39,15 @@ export function Inbox({ me }: { me: Account | null }) {
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const [sending, setSending] = useState(false);
+  const [ending, setEnding] = useState(false);
+  const [confirmEnd, setConfirmEnd] = useState(false);
   const [pages, setPages] = useState<PageVisit[]>([]);
   const [now, setNow] = useState(() => Date.now());
 
-  const live = useMemo(() => conversations.filter((conversation) => conversation.metadata?.offline !== "true"), [conversations]);
-  const messagesLeft = useMemo(() => conversations.filter((conversation) => conversation.metadata?.offline === "true"), [conversations]);
-  const groups = useMemo(() => groupConversations(live), [live]);
+  const queues = useMemo(() => splitQueues(conversations), [conversations]);
+  const needsYou = useMemo(() => groupConversations(queues.needsYou), [queues.needsYou]);
+  const openChats = useMemo(() => groupConversations(queues.open), [queues.open]);
+  const done = useMemo(() => groupConversations(queues.done), [queues.done]);
 
   async function loadList() {
     const data = await api<{ conversations: Conversation[] }>("/api/conversations");
@@ -58,6 +61,7 @@ export function Inbox({ me }: { me: Account | null }) {
   }
 
   async function openConversation(id: string) {
+    setConfirmEnd(false);
     await api(`/api/conversations/${id}/read`, { method: "POST", body: "{}" });
     const fresh = await api<{ conversation: Conversation }>(`/api/conversations/${id}`);
     setCurrent(fresh.conversation);
@@ -74,6 +78,15 @@ export function Inbox({ me }: { me: Account | null }) {
       setVisitor("error");
     }
   }
+
+  useEffect(() => {
+    if (!confirmEnd) return;
+    function onKey(event: KeyboardEvent) {
+      if (event.key === "Escape") setConfirmEnd(false);
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [confirmEnd]);
 
   useEffect(() => {
     loadList().catch(() => setLoaded(true));
@@ -143,12 +156,21 @@ export function Inbox({ me }: { me: Account | null }) {
   }
 
   async function closeTicket() {
-    if (!current) return;
-    await api(`/api/conversations/${current.id}`, {
-      method: "PATCH",
-      body: JSON.stringify({ status: "closed" }),
-    });
-    await openConversation(current.id);
+    if (!current || ending || current.status === "closed") return;
+    setEnding(true);
+    try {
+      const result = await api<{ conversation: Conversation }>(`/api/conversations/${current.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ status: "closed" }),
+      });
+      setCurrent(result.conversation);
+      setConfirmEnd(false);
+      loadList().catch(() => {});
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Could not end the conversation.");
+    } finally {
+      setEnding(false);
+    }
   }
 
   const mine = Boolean(me && current?.assigneeName && current.assigneeId === me.id);
@@ -156,57 +178,38 @@ export function Inbox({ me }: { me: Account | null }) {
   return (
     <div className="inbox">
       <aside className="list">
-        <div className="list-head">Live chat{live.length ? ` · ${live.length}` : ""}</div>
-        <div>
-          {loaded && live.length === 0 ? <p className="muted" style={{ padding: 18 }}>No live chats.</p> : null}
-          {groups.map((group) => {
-            if (!group.identifier) {
-              const conversation = group.conversations[0]!;
-              return (
-                <ConversationRow
-                  key={conversation.id}
-                  conversation={conversation}
-                  active={conversation.id === current?.id}
-                  onOpen={() => openConversation(conversation.id)}
-                />
-              );
-            }
-            const unread = group.conversations.reduce((sum, conversation) => sum + (conversation.unreadForAgent || 0), 0);
-            const latest = group.conversations[0]!;
-            return (
-              <div key={group.key}>
-                <button className="group-head" type="button" onClick={() => openVisitor(group.identifier!)}>
-                  <span className="who">
-                    <strong>{latest.visitorName || group.identifier}</strong>
-                    <small>{group.identifier}</small>
-                  </span>
-                  {unread ? <span className="badge badge-primary">{unread}</span> : null}
-                  <span className="group-count">{group.conversations.length}</span>
-                </button>
-                {group.conversations.map((conversation) => (
-                  <ConversationRow
-                    key={conversation.id}
-                    conversation={conversation}
-                    active={conversation.id === current?.id}
-                    onOpen={() => openConversation(conversation.id)}
-                  />
-                ))}
-              </div>
-            );
-          })}
-        </div>
-        <div className="list-head">Messages{messagesLeft.length ? ` · ${messagesLeft.length}` : ""}</div>
-        <div>
-          {loaded && messagesLeft.length === 0 ? <p className="muted" style={{ padding: 18 }}>No messages left behind.</p> : null}
-          {messagesLeft.map((conversation) => (
-            <ConversationRow
-              key={conversation.id}
-              conversation={conversation}
-              active={conversation.id === current?.id}
-              onOpen={() => openConversation(conversation.id)}
-            />
-          ))}
-        </div>
+        <Queue
+          title="Needs you"
+          tone="hot"
+          count={queues.needsYou.length}
+          groups={needsYou}
+          loaded={loaded}
+          empty="Nothing is waiting."
+          currentId={current?.id}
+          onOpen={openConversation}
+          onVisitor={openVisitor}
+        />
+        <Queue
+          title="Open"
+          count={queues.open.length}
+          groups={openChats}
+          loaded={loaded}
+          empty="No one is in a live chat."
+          currentId={current?.id}
+          onOpen={openConversation}
+          onVisitor={openVisitor}
+        />
+        <Queue
+          title="Done"
+          tone="quiet"
+          count={queues.done.length}
+          groups={done}
+          loaded={loaded}
+          empty="No closed tickets."
+          currentId={current?.id}
+          onOpen={openConversation}
+          onVisitor={openVisitor}
+        />
       </aside>
       <section className="thread">
         <div className="thread-bar">
@@ -216,6 +219,7 @@ export function Inbox({ me }: { me: Account | null }) {
               {current.identifier ? <span className="badge badge-outline">{current.identifier}</span> : null}
               {topicLabel(current) ? <span className="badge badge-primary">{topicLabel(current)}</span> : null}
               {current.metadata?.offline === "true" ? <span className="badge badge-outline">Email</span> : null}
+              {current.status === "closed" ? <span className="badge badge-outline">Ended</span> : null}
               {current.assigneeName ? (
                 <span className="badge badge-outline">{current.assigneeName} joined</span>
               ) : current.metadata?.offline === "true" ? (
@@ -235,14 +239,35 @@ export function Inbox({ me }: { me: Account | null }) {
                   User card
                 </button>
               ) : null}
-              {current ? (
+              {current && current.status !== "closed" ? (
                 <button className="btn btn-primary btn-sm" type="button" onClick={assign} disabled={mine || assigning}>
                   {mine ? "Assigned to you" : current.assigneeName ? "Reassign to me" : "Assign to me"}
+                </button>
+              ) : null}
+              {current && current.status !== "closed" ? (
+                <button className="btn btn-outline btn-sm" type="button" onClick={() => setConfirmEnd(true)} disabled={ending}>
+                  End conversation
                 </button>
               ) : null}
             </span>
           ) : null}
         </div>
+        {confirmEnd && current && current.status !== "closed" ? (
+          <div className="confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="end-conversation-title">
+            <div className="confirm-card">
+              <h2 id="end-conversation-title">End this conversation?</h2>
+              <p className="muted">{current.visitorName || "The visitor"} will see that you ended it and will not be able to reply.</p>
+              <div className="row">
+                <button className="btn btn-outline" type="button" onClick={() => setConfirmEnd(false)} disabled={ending}>
+                  Keep open
+                </button>
+                <button className="btn btn-primary" type="button" onClick={() => void closeTicket()} disabled={ending}>
+                  {ending ? "Ending…" : "End conversation"}
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
         {visitor ? (
           <aside className="visitor-card">
             <header>
@@ -289,6 +314,7 @@ export function Inbox({ me }: { me: Account | null }) {
           )}
         </div>
         <form className="composer" onSubmit={send}>
+          {current?.status === "closed" ? <p className="muted">This conversation has ended. The visitor can no longer reply.</p> : null}
           {pendingFile || uploadProgress !== null ? (
             <div className="upload-bar">
               <span className="upload-name">{pendingFile?.name ?? "Uploading"}</span>
@@ -302,11 +328,11 @@ export function Inbox({ me }: { me: Account | null }) {
             </div>
           ) : null}
           <div className="composer-row">
-            <label className="btn btn-outline btn-sm attach">
+            <label className={`btn btn-outline btn-sm attach${current?.status === "closed" ? " is-disabled" : ""}`}>
               Attach
               <input
                 type="file"
-                disabled={sending}
+                disabled={sending || current?.status === "closed"}
                 onChange={(event) => {
                   const file = event.target.files?.[0] ?? null;
                   if (file && file.size > UPLOAD_MAX_BYTES) alert("Files can be up to 50 MB.");
@@ -318,15 +344,20 @@ export function Inbox({ me }: { me: Account | null }) {
             <textarea
               className="textarea"
               rows={2}
-              placeholder="Reply as an agent…"
+              placeholder={current?.status === "closed" ? "This conversation has ended" : "Reply as an agent…"}
               value={reply}
-              disabled={sending}
+              disabled={sending || current?.status === "closed"}
               onChange={(event) => setReply(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && !event.shiftKey) {
+                  event.preventDefault();
+                  event.currentTarget.form?.requestSubmit();
+                }
+              }}
             />
-            <button className="btn btn-primary" type="submit" disabled={sending || (!reply.trim() && !pendingFile)}>
+            <button className="btn btn-primary" type="submit" disabled={sending || current?.status === "closed" || (!reply.trim() && !pendingFile)}>
               {sending ? "Sending" : "Send"}
             </button>
-            <button className="btn btn-outline" type="button" onClick={closeTicket}>Close</button>
           </div>
         </form>
       </section>
@@ -350,7 +381,7 @@ function PageTrail({ pages, now }: { pages: PageVisit[]; now: number }) {
       <div className="page-list" ref={listRef}>
         {pages.map((page) => (
           <div className={page.endedAt ? "page-visit" : "page-visit is-live"} key={`${page.path}-${page.startedAt}`}>
-            <code>{page.path}</code>
+            <code>{pagePath(page.path)}</code>
             <span>{stayLabel(page, now)}</span>
           </div>
         ))}
@@ -359,8 +390,32 @@ function PageTrail({ pages, now }: { pages: PageVisit[]; now: number }) {
   );
 }
 
+/** Query strings are noise in the trail. Keep the path the visitor was on. */
+function pagePath(path: string): string {
+  const cut = path.search(/[?#]/);
+  const clean = (cut === -1 ? path : path.slice(0, cut)) || "/";
+  try {
+    return decodeURIComponent(clean);
+  } catch {
+    return clean;
+  }
+}
+
 function topicLabel(conversation: Conversation): string {
   return conversation.metadata?.topic?.trim() ?? "";
+}
+
+/** Work waiting on a person comes first. Closed chats sink to the bottom. */
+function splitQueues(conversations: Conversation[]): { needsYou: Conversation[]; open: Conversation[]; done: Conversation[] } {
+  const needsYou: Conversation[] = [];
+  const open: Conversation[] = [];
+  const done: Conversation[] = [];
+  for (const conversation of conversations) {
+    if (conversation.status === "closed") done.push(conversation);
+    else if (!conversation.assigneeName || conversation.unreadForAgent > 0 || conversation.metadata?.offline === "true") needsYou.push(conversation);
+    else open.push(conversation);
+  }
+  return { needsYou, open, done };
 }
 
 function stayLabel(page: PageVisit, now: number): string {
@@ -369,6 +424,65 @@ function stayLabel(page: PageVisit, now: number): string {
   const seconds = Math.max(0, Math.round((end - start) / 1000));
   const text = seconds < 60 ? `${seconds}s` : `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
   return page.endedAt ? text : `${text} · here now`;
+}
+
+function Queue({
+  title,
+  tone,
+  count,
+  groups,
+  loaded,
+  empty,
+  currentId,
+  onOpen,
+  onVisitor,
+}: {
+  title: string;
+  tone?: "hot" | "quiet";
+  count: number;
+  groups: Group[];
+  loaded: boolean;
+  empty: string;
+  currentId?: string;
+  onOpen: (id: string) => void;
+  onVisitor: (identifier: string) => void;
+}) {
+  return (
+    <section className={["queue", tone ? `is-${tone}` : ""].filter(Boolean).join(" ")}>
+      <div className="list-head">
+        <span>{title}</span>
+        {count ? <span className="queue-count">{count}</span> : null}
+      </div>
+      <div className="queue-body">
+        {loaded && count === 0 ? <p className="queue-empty">{empty}</p> : null}
+        {groups.map((group) => {
+          const unread = group.conversations.reduce((sum, conversation) => sum + (conversation.unreadForAgent || 0), 0);
+          return (
+            <div key={group.key}>
+              {group.identifier && group.conversations.length > 1 ? (
+                <button className="group-head" type="button" onClick={() => onVisitor(group.identifier!)}>
+                  <span className="who">
+                    <strong>{group.conversations[0]?.visitorName || group.identifier}</strong>
+                    <small>{group.identifier}</small>
+                  </span>
+                  {unread ? <span className="badge badge-primary">{unread}</span> : null}
+                  <span className="group-count">{group.conversations.length}</span>
+                </button>
+              ) : null}
+              {group.conversations.map((conversation) => (
+                <ConversationRow
+                  key={conversation.id}
+                  conversation={conversation}
+                  active={conversation.id === currentId}
+                  onOpen={() => onOpen(conversation.id)}
+                />
+              ))}
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
 }
 
 function ConversationRow({
@@ -380,19 +494,29 @@ function ConversationRow({
   active: boolean;
   onOpen: () => void;
 }) {
+  const waiting = conversation.status !== "closed" && (!conversation.assigneeName || conversation.unreadForAgent > 0 || conversation.metadata?.offline === "true");
+  const subject = topicLabel(conversation) || (conversation.metadata?.offline === "true" ? "Left a message" : conversation.metadata?.handler === "ai" ? "AI chat" : "Live chat");
+  const when = formatMessageTime(conversation.updatedAt);
   return (
-    <div className={active ? "item active" : "item"} onClick={onOpen}>
-      <strong>{conversation.visitorName || "Visitor"}</strong>{" "}
-      {conversation.unreadForAgent ? <span className="badge badge-primary">{conversation.unreadForAgent}</span> : null}{" "}
-      {conversation.assigneeName ? (
-        <span className="badge badge-outline">{conversation.assigneeName}</span>
-      ) : (
-        <span className="badge">unassigned</span>
-      )}
-      {conversation.metadata?.offline === "true" ? null : conversation.status === "closed" ? <span className="badge badge-outline">closed</span> : null}
-      <br />
-      <small>{topicLabel(conversation) || conversation.visitorEmail || conversation.id}</small>
-    </div>
+    <button type="button" className={["item", active ? "active" : "", waiting ? "is-waiting" : ""].filter(Boolean).join(" ")} onClick={onOpen}>
+      <span className="item-top">
+        <strong>{conversation.visitorName || "Visitor"}</strong>
+        {conversation.unreadForAgent ? <span className="badge badge-primary">{conversation.unreadForAgent}</span> : null}
+        <span className="item-time">{when}</span>
+      </span>
+      <span className="item-subject">{subject}</span>
+      <span className="item-meta">
+        {conversation.metadata?.offline === "true" ? <span className="badge">Email</span> : null}
+        {conversation.status === "closed" ? (
+          <span className="badge badge-outline">Closed</span>
+        ) : conversation.assigneeName ? (
+          <span className="badge badge-outline">{conversation.assigneeName}</span>
+        ) : (
+          <span className="badge">Unassigned</span>
+        )}
+        {conversation.visitorEmail ? <span className="item-mail">{conversation.visitorEmail}</span> : null}
+      </span>
+    </button>
   );
 }
 

@@ -73,6 +73,24 @@ test("closed conversations reject visitor replies", () => {
   store.close();
 });
 
+test("ending a conversation posts who ended it and ignores a second close", () => {
+  const store = memoryStore();
+  const created = store.createConversation({}, "secret");
+  const ended = store.endConversation(created.conversation.id, "Sam");
+  assert.equal(ended?.status, "closed");
+  const messages = store.listMessages(created.conversation.id).messages;
+  assert.equal(messages.at(-1)?.role, "system");
+  assert.equal(messages.at(-1)?.body, "Sam ended the conversation");
+  store.endConversation(created.conversation.id, "Sam");
+  assert.equal(store.listMessages(created.conversation.id).messages.length, 1);
+  assert.throws(() => store.addMessage(created.conversation.id, { role: "visitor", body: "Still here" }), /closed/);
+  const unnamed = store.createConversation({}, "other");
+  store.assignConversation(unnamed.conversation.id, { id: "acc_ada", name: "Ada" });
+  store.endConversation(unnamed.conversation.id);
+  assert.equal(store.listMessages(unnamed.conversation.id).messages.at(-1)?.body, "Ada ended the conversation");
+  store.close();
+});
+
 test("lists conversations newest first with a cursor", () => {
   const store = memoryStore();
   const first = store.createConversation({ visitorName: "First" }, "a");
@@ -134,6 +152,47 @@ test("staff are online only while someone recent has not stepped away", () => {
   const stale = new Date(Date.now() - 60_000).toISOString();
   store.db.prepare("UPDATE accounts SET last_seen_at = ? WHERE id = ?").run(stale, ada.id);
   assert.equal(store.staffOnline(), false);
+  store.close();
+});
+
+test("the average accept time ignores AI chats and later reassignment", () => {
+  const store = memoryStore();
+  assert.equal(store.averageAcceptSeconds(), null);
+  const human = store.createConversation({ metadata: { handler: "human" } }, "human");
+  const ai = store.createConversation({ metadata: { handler: "ai" } }, "ai");
+  const opened = new Date(Date.now() - 120_000).toISOString();
+  store.db.prepare("UPDATE conversations SET created_at = ?").run(opened);
+  store.assignConversation(human.conversation.id, { id: "acc_ada", name: "Ada" });
+  store.assignConversation(ai.conversation.id, { id: "acc_bot", name: "Bot" });
+  const first = store.averageAcceptSeconds();
+  assert.equal(first !== null && first >= 110 && first <= 140, true);
+  store.assignConversation(human.conversation.id, { id: "acc_bea", name: "Bea" });
+  assert.equal(store.averageAcceptSeconds(), first);
+  store.close();
+});
+
+test("desk stats average the wait, the rating, and how long chats stayed open", () => {
+  const store = memoryStore();
+  const empty = store.deskStats();
+  assert.equal(empty.averageResponseSeconds, null);
+  assert.equal(empty.averageRating, null);
+  assert.equal(empty.averageConversationSeconds, null);
+  const human = store.createConversation({}, "human");
+  const opened = new Date(Date.now() - 180_000).toISOString();
+  store.db.prepare("UPDATE conversations SET created_at = ? WHERE id = ?").run(opened, human.conversation.id);
+  store.assignConversation(human.conversation.id, { id: "acc_ada", name: "Ada" });
+  store.updateConversation(human.conversation.id, { status: "closed" });
+  store.rateConversation(human.conversation.id, "up");
+  const other = store.createConversation({}, "other");
+  store.updateConversation(other.conversation.id, { status: "closed" });
+  store.rateConversation(other.conversation.id, "down");
+  const stats = store.deskStats();
+  assert.equal(stats.responseSamples, 1);
+  assert.equal(stats.averageRating, 0.5);
+  assert.equal(stats.ratingUp, 1);
+  assert.equal(stats.ratingDown, 1);
+  assert.equal(stats.conversationSamples, 2);
+  assert.equal((stats.averageConversationSeconds ?? 0) > 0, true);
   store.close();
 });
 

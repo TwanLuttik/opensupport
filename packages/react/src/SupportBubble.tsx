@@ -11,6 +11,21 @@ const DEFAULT_CONFIG: PublicConfig = {
   title: "Support",
   subtitle: "We typically reply within a few minutes.",
   accentColor: "#111827",
+  theme: {
+    id: "ink",
+    colors: {
+      accent: "#111827",
+      accentText: "#ffffff",
+      header: "#111827",
+      headerText: "#ffffff",
+      panel: "#ffffff",
+      canvas: "#f4f5f7",
+      ink: "#16181d",
+      muted: "#6d727c",
+      agentBubble: "#ffffff",
+      composer: "#ffffff",
+    },
+  },
   placeholder: "Write a message…",
   greeting: "Hi! How can we help?",
   formEnabled: false,
@@ -108,6 +123,7 @@ export function SupportBubble({
   const [closed, setClosed] = useState(false);
   const [starting, setStarting] = useState(false);
   const [ending, setEnding] = useState(false);
+  const [confirmEnd, setConfirmEnd] = useState(false);
   const [agentName, setAgentName] = useState<string | null>(null);
   const [assigneeName, setAssigneeName] = useState<string | null>(null);
   const [assigneeAvatar, setAssigneeAvatar] = useState<string | null>(null);
@@ -225,7 +241,7 @@ export function SupportBubble({
     const report = () => {
       const current = sessionRef.current;
       if (!current) return;
-      const path = `${window.location.pathname}${window.location.search}`.slice(0, 300) || "/";
+      const path = window.location.pathname.slice(0, 300) || "/";
       if (path === last) return;
       last = path;
       client.reportPage(current, path).catch(() => undefined);
@@ -260,6 +276,15 @@ export function SupportBubble({
   }, [applyConversation, client, hasSession, messages, noteAgents, pollIntervalMs]);
 
   useEffect(() => {
+    if (!confirmEnd) return;
+    function onKey(event: KeyboardEvent) {
+      if (event.key === "Escape" && !ending) setConfirmEnd(false);
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [confirmEnd, ending]);
+
+  useEffect(() => {
     if (!open) return;
     setUnseen(0);
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight });
@@ -292,6 +317,7 @@ export function SupportBubble({
     setAssigneeName(null);
     setAssigneeAvatar(null);
     setClosed(false);
+    setConfirmEnd(false);
     setShowArchive(false);
     setRating(null);
     setRatingChoice(null);
@@ -384,6 +410,7 @@ export function SupportBubble({
     try {
       const conversation = await client.close(session);
       applyConversation(conversation);
+      setConfirmEnd(false);
       setShowArchive(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not end the conversation.");
@@ -505,8 +532,20 @@ export function SupportBubble({
     void startConversation();
   }
 
-  const accent = config.accentColor;
-  const rootStyle = { "--osb-accent": accent } as CSSProperties;
+  const colors = bubbleColors(config);
+  const rootStyle = {
+    "--osb-accent": colors.accent,
+    "--osb-accent-text": colors.accentText,
+    "--osb-header": colors.header,
+    "--osb-header-text": colors.headerText,
+    "--osb-panel": colors.panel,
+    "--osb-canvas": colors.canvas,
+    "--osb-ink": colors.ink,
+    "--osb-muted": colors.muted,
+    "--osb-agent": colors.agentBubble,
+    "--osb-composer": colors.composer,
+    "--osb-line": mix(colors.ink, 0.12),
+  } as CSSProperties;
   const logoUrl = config.logoUrl ? absoluteUrl(serverUrl, config.logoUrl) : "";
   const agentPhoto = assigneeAvatar ? absoluteUrl(serverUrl, assigneeAvatar) : "";
   const started = hasSession;
@@ -565,8 +604,8 @@ export function SupportBubble({
             </div>
             <div className="osb-header-actions">
               {started && !closed ? (
-                <button type="button" className="osb-end" onClick={() => void endConversation()} disabled={ending}>
-                  {ending ? "Ending…" : "End chat"}
+                <button type="button" className="osb-end" onClick={() => setConfirmEnd(true)} disabled={ending}>
+                  End chat
                 </button>
               ) : null}
               <button type="button" className="osb-icon-button" onClick={() => toggle(false)} aria-label="Close chat">
@@ -578,6 +617,7 @@ export function SupportBubble({
             {!started && showForm ? (
               <form className="osb-form" onSubmit={onFormSubmit}>
                 <p className="osb-form-greeting">{config.greeting}</p>
+                {config.responseTime?.label ? <p className="osb-response">{config.responseTime.label}</p> : null}
                 <h3>{config.formTitle}</h3>
                 {config.formFields.map((field) => {
                   const fieldId = `${titleId}-${field.id}`;
@@ -696,6 +736,7 @@ export function SupportBubble({
             {!started && (isLive || aiOffered) && !showForm && !leaveMessage ? (
               <div className="osb-welcome">
                 <p>{config.greeting}</p>
+                {config.responseTime?.label ? <p className="osb-response">{config.responseTime.label}</p> : null}
                 {!isLive ? <HoursTable hours={config.officeHours} /> : null}
                 <StartChoices
                   config={config}
@@ -728,6 +769,7 @@ export function SupportBubble({
               <p className="osb-waiting" role="status">
                 <span className="osb-waiting-dot" aria-hidden="true" />
                 {config.waitingMessage}
+                {config.responseTime?.label ? <span className="osb-response">{config.responseTime.label}</span> : null}
               </p>
             ) : null}
             {aiThinking ? <TypingIndicator name={aiLabel} /> : null}
@@ -745,15 +787,17 @@ export function SupportBubble({
                   onNote={setRatingNote}
                   onSubmit={(next) => void submitRating(next)}
                 />
-                <StartChoices
-                  config={config}
-                  starting={starting}
-                  disabled={starting}
-                  aiOffered={aiOffered}
-                  aiName={config.ai?.agentName}
-                  onStart={(topicId, handler) => void startConversation(topicId, handler)}
-                  fallback="Start a new conversation"
-                />
+                {rating ? (
+                  <StartChoices
+                    config={config}
+                    starting={starting}
+                    disabled={starting}
+                    aiOffered={aiOffered}
+                    aiName={config.ai?.agentName}
+                    onStart={(topicId, handler) => void startConversation(topicId, handler)}
+                    fallback="Start a new conversation"
+                  />
+                ) : null}
                 <button type="button" className="osb-archive" onClick={() => setShowArchive((value) => !value)} aria-expanded={showArchive}>
                   {showArchive ? "Hide archive" : "Archive"}
                 </button>
@@ -796,17 +840,19 @@ export function SupportBubble({
                 type="button"
                 className="osb-attach"
                 aria-label="Screenshot this page"
+                data-tip="Screenshot this page"
                 disabled={sending || capturing}
                 onClick={() => void takeScreenshot()}
               >
                 {capturing ? <span className="osb-spinner osb-spinner-ink" /> : <Camera size={18} strokeWidth={1.75} />}
               </button>
-              <label className="osb-attach">
+              <label className="osb-attach" data-tip="Attach a file">
                 <span className="osb-sr">Attach a file, up to 50 MB</span>
                 <IconClip />
                 <input
                   type="file"
                   disabled={sending}
+                  aria-label="Attach a file"
                   onChange={(event) => {
                     chooseFile(event.target.files?.[0] ?? null);
                     event.target.value = "";
@@ -842,10 +888,28 @@ export function SupportBubble({
             </div>
           </form>
           ) : null}
-          <p className="osb-credit">
-            <a href="https://opensupport.dev" target="_blank" rel="noreferrer">OpenSupport</a>
-            <span>Created by CoatCheck Technology, Inc.</span>
-          </p>
+          {!started || closed ? (
+            <p className="osb-credit">
+              <a href="https://opensupport.dev" target="_blank" rel="noreferrer">OpenSupport</a>
+              <span>Created by CoatCheck Technology, Inc.</span>
+            </p>
+          ) : null}
+          {confirmEnd ? (
+            <div className="osb-confirm" role="dialog" aria-modal="true" aria-labelledby={`${titleId}-end`}>
+              <div className="osb-confirm-card">
+                <h3 id={`${titleId}-end`}>End this chat?</h3>
+                <p>You will not be able to send more messages in this conversation.</p>
+                <div className="osb-confirm-actions">
+                  <button type="button" className="osb-topic" onClick={() => setConfirmEnd(false)} disabled={ending}>
+                    Keep chatting
+                  </button>
+                  <button type="button" className="osb-start" onClick={() => void endConversation()} disabled={ending}>
+                    {ending ? "Ending…" : "End chat"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : null}
         </section>
       ) : null}
       <button
@@ -860,6 +924,38 @@ export function SupportBubble({
       </button>
     </div>
   );
+}
+
+const INK_COLORS: NonNullable<PublicConfig["theme"]>["colors"] = {
+  accent: "#111827",
+  accentText: "#ffffff",
+  header: "#111827",
+  headerText: "#ffffff",
+  panel: "#ffffff",
+  canvas: "#f4f5f7",
+  ink: "#16181d",
+  muted: "#6d727c",
+  agentBubble: "#ffffff",
+  composer: "#ffffff",
+};
+
+/** Server themes win. Older configs only carry an accent, which still paints the header. */
+function bubbleColors(config: PublicConfig): NonNullable<PublicConfig["theme"]>["colors"] {
+  const colors = { ...INK_COLORS, ...(config.theme?.colors ?? {}) };
+  const accent = /^#[0-9a-fA-F]{6}$/.test(config.accentColor) ? config.accentColor : colors.accent;
+  if (!config.theme) {
+    colors.accent = accent;
+    colors.header = accent;
+  }
+  return colors;
+}
+
+function mix(hex: string, alpha: number): string {
+  const value = hex.replace("#", "");
+  const r = Number.parseInt(value.slice(0, 2), 16);
+  const g = Number.parseInt(value.slice(2, 4), 16);
+  const b = Number.parseInt(value.slice(4, 6), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
 /** A short two-note boop. One extra note marks a burst of replies. */

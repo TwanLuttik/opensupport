@@ -107,7 +107,7 @@ Put the URL in an env var so local and production point at different servers:
 | `onOpenChange` | `(open: boolean) => void` | — | Fires when the panel opens or closes |
 | `className` | `string` | — | Added to the fixed root element |
 
-Title, subtitle, accent color, greeting, and placeholder come from the server (`WIDGET_*` env vars, or `PUT /api/config`). The widget loads them from `GET /api/widget/config`.
+Title, subtitle, greeting, placeholder, and theme come from the server (`WIDGET_*` env vars, or the dashboard Appearance settings). The widget loads them from `GET /api/widget/config`. A theme is a template (`ink`, `paper`, `forest`, `ocean`, `dusk`) or `custom` with its own colors. The bubble paints those colors as CSS variables on `.osb-root`.
 
 ## Next.js
 
@@ -265,7 +265,7 @@ All classes start with `osb-`. Override them after the imported stylesheet.
 }
 ```
 
-`className` is appended to `.osb-root`. The accent color is an inline style from the server, so a CSS `background` on `.osb-launcher` will not win unless you raise specificity or use `!important`.
+`className` is appended to `.osb-root`. Theme colors are inline custom properties from the server (`--osb-accent`, `--osb-header`, `--osb-panel`, `--osb-canvas`, `--osb-ink`, and others), so a CSS `background` on `.osb-launcher` will not win unless you raise specificity or use `!important`.
 
 Useful classes: `osb-launcher`, `osb-panel`, `osb-header`, `osb-messages`, `osb-message-visitor`, `osb-message-agent`, `osb-message-system`, `osb-composer`, `osb-badge`.
 

@@ -110,10 +110,44 @@ export interface QuickAction {
   label: string;
 }
 
+/** Built-in bubble looks, plus `custom` when the desk paints its own colors. */
+export type BubbleThemeId = "ink" | "paper" | "forest" | "ocean" | "dusk" | "custom";
+
+/** Colors the bubble paints from. Every value is a `#rrggbb` hex. */
+export interface BubbleThemeColors {
+  /** Launcher, visitor bubbles, and primary buttons. */
+  accent: string;
+  /** Text and icons drawn on the accent. */
+  accentText: string;
+  /** Header bar behind the title. */
+  header: string;
+  /** Title and subtitle on the header. */
+  headerText: string;
+  /** Panel, composer, and cards. */
+  panel: string;
+  /** Transcript background. */
+  canvas: string;
+  /** Body text. */
+  ink: string;
+  /** Secondary text. */
+  muted: string;
+  /** Agent message bubble. */
+  agentBubble: string;
+  /** Composer bar. */
+  composer: string;
+}
+
+export interface BubbleTheme {
+  id: BubbleThemeId;
+  colors: BubbleThemeColors;
+}
+
 export interface PublicConfig {
   title: string;
   subtitle: string;
   accentColor: string;
+  /** Template id plus the colors the bubble should paint. */
+  theme: BubbleTheme;
   placeholder: string;
   greeting: string;
   /** When true, the widget asks for this form before opening a conversation. */
@@ -127,6 +161,8 @@ export interface PublicConfig {
   quickActions: QuickAction[];
   /** Business mark shown in the bubble header. Null until one is uploaded. */
   logoUrl: string | null;
+  /** When true, the bubble shows how long people usually wait before an agent accepts. */
+  showResponseTime: boolean;
 }
 
 export type WebhookEvent = "conversation.created" | "message.created";
@@ -262,6 +298,20 @@ export interface AiUsageSummary {
     estimatedCostUsd: number;
   }>;
   recent: Array<AiUsageEntry & { estimatedCostUsd: number }>;
+}
+
+export interface DeskStats {
+  /** Mean seconds from a human chat opening until the first accept. Null with no samples. */
+  averageResponseSeconds: number | null;
+  responseSamples: number;
+  /** Share of thumbs-up among up and down votes, from 0 to 1. Null when nobody voted. */
+  averageRating: number | null;
+  ratingUp: number;
+  ratingDown: number;
+  ratingSkipped: number;
+  /** Mean seconds a closed human chat stayed open. Null when none have ended. */
+  averageConversationSeconds: number | null;
+  conversationSamples: number;
 }
 
 export interface ApiTokenRecord {

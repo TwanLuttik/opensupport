@@ -1,6 +1,28 @@
 import { z } from "zod";
 import { DEFAULT_AI_MODEL, isOpenAiModel } from "./ai.js";
+import { BUBBLE_THEME_IDS, resolveBubbleTheme } from "./themes.js";
 import type { AiSettings, DayHours, FormField, OfficeHours, PublicConfig, ServerSettings, ServerSettingsView, TelegramSettings, WebhookEndpoint } from "./types.js";
+
+const hexColor = z.string().regex(/^#[0-9a-fA-F]{6}$/);
+
+const themeColorsSchema = z.object({
+  accent: hexColor,
+  accentText: hexColor,
+  header: hexColor,
+  headerText: hexColor,
+  panel: hexColor,
+  canvas: hexColor,
+  ink: hexColor,
+  muted: hexColor,
+  agentBubble: hexColor,
+  composer: hexColor,
+});
+
+/** Accepts a template id alone, or a custom palette with any subset of colors. */
+export const themeInputSchema = z.object({
+  id: z.enum(BUBBLE_THEME_IDS),
+  colors: themeColorsSchema.partial().optional(),
+});
 
 export const DEFAULT_TELEGRAM: TelegramSettings = {
   enabled: false,
@@ -62,6 +84,7 @@ export const widgetSchema = z.object({
     .regex(/^\/uploads\/[a-zA-Z0-9._-]+$/)
     .nullable()
     .default(null),
+  showResponseTime: z.boolean().default(false),
 });
 
 const timeSchema = z.number().int().min(0).max(24 * 60);
@@ -105,7 +128,12 @@ const webhookSchema = z.object({
 });
 
 export const settingsSchema = z.object({
-  widget: widgetSchema,
+  widget: widgetSchema.extend({
+    theme: z.object({
+      id: z.enum(BUBBLE_THEME_IDS),
+      colors: themeColorsSchema,
+    }),
+  }),
   corsOrigin: z.string().trim().min(1).max(1000),
   webhooks: z.array(webhookSchema).max(20),
   telegram: z.object({
@@ -248,12 +276,21 @@ export const DEFAULT_FORM_FIELDS: FormField[] = [
   { id: "topic", label: "How can we help?", type: "textarea", required: true, placeholder: "Tell us what happened", options: [] },
 ];
 
-/** Older saved settings predate the form. Fill the new fields so the widget always has them. */
-export function normalizeWidget(widget: Partial<PublicConfig> & Pick<PublicConfig, "title" | "subtitle" | "accentColor" | "placeholder" | "greeting">): PublicConfig {
-  return widgetSchema.parse({
-    ...widget,
+type WidgetInput = Partial<PublicConfig> &
+  Pick<PublicConfig, "title" | "subtitle" | "accentColor" | "placeholder" | "greeting"> & {
+    theme?: z.input<typeof themeInputSchema>;
+  };
+
+/** Older saved settings predate the form and the theme. Fill the new fields so the widget always has them. */
+export function normalizeWidget(widget: WidgetInput): PublicConfig {
+  const { theme: rawTheme, ...rest } = widget;
+  const theme = resolveBubbleTheme(themeInputSchema.optional().parse(rawTheme), rest.accentColor);
+  const parsed = widgetSchema.parse({
+    ...rest,
+    accentColor: theme.colors.accent,
     formFields: widget.formFields ?? [],
     quickActions: widget.quickActions ?? [],
     logoUrl: widget.logoUrl ?? null,
   });
+  return { ...parsed, theme };
 }

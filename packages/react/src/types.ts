@@ -57,10 +57,34 @@ export interface QuickAction {
   label: string;
 }
 
+/** Built-in bubble looks, plus `custom` when the desk paints its own colors. */
+export type BubbleThemeId = "ink" | "paper" | "forest" | "ocean" | "dusk" | "custom";
+
+/** Colors the bubble paints from. Every value is a `#rrggbb` hex. */
+export interface BubbleThemeColors {
+  accent: string;
+  accentText: string;
+  header: string;
+  headerText: string;
+  panel: string;
+  canvas: string;
+  ink: string;
+  muted: string;
+  agentBubble: string;
+  composer: string;
+}
+
+export interface BubbleTheme {
+  id: BubbleThemeId;
+  colors: BubbleThemeColors;
+}
+
 export interface PublicConfig {
   title: string;
   subtitle: string;
   accentColor: string;
+  /** Resolved look from the server. Absent on older servers, which only send an accent. */
+  theme?: BubbleTheme;
   placeholder: string;
   greeting: string;
   /** When true, the bubble asks for `formFields` before opening a conversation. */
@@ -88,6 +112,11 @@ export interface PublicConfig {
     enabled: boolean;
     agentName: string;
   };
+  /** Present when the desk shows how long agents usually take to accept a ticket. */
+  responseTime?: {
+    seconds: number;
+    label: string;
+  } | null;
   /** True when a person has the desk open and has not marked themselves away. */
   staffOnline?: boolean;
 }

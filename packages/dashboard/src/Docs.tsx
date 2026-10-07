@@ -21,9 +21,10 @@ export function Docs() {
           <li><strong>Inbox</strong> has two lists. Live chat is open conversations. Messages are emails left while the desk was closed.</li>
           <li><strong>Assign to me</strong> puts your name and profile picture on the ticket. The visitor sees both in the bubble.</li>
           <li>Reply from the composer. Your account name is what the visitor sees, not the word You.</li>
+          <li><strong>End conversation</strong> closes the ticket from the desk. The visitor sees who ended it and can no longer reply.</li>
           <li>Click an image to view it full screen. Code files open in a reader. Other files have a download button.</li>
           <li><strong>Hours</strong> limits live chat to a weekly schedule in a timezone. Outside those hours the visitor leaves an email instead.</li>
-          <li><strong>Settings</strong> changes the bubble: title, color, logo, greeting, start-screen topics, the pre-chat form, the AI agent, embed origins, webhooks, Telegram, and API tokens.</li>
+          <li><strong>Settings</strong> changes the bubble: title, theme, logo, greeting, start-screen topics, the pre-chat form, the AI agent, embed origins, webhooks, Telegram, and API tokens. Appearance has templates (Ink, Paper, Forest, Ocean, Dusk) and a custom palette.</li>
           <li><strong>AI models</strong> saves an OpenAI key and picks the model. <strong>AI agent</strong> is the knowledge that model answers from. The bubble then offers a chat with the AI instead of a person.</li>
           <li><strong>AI usage</strong> counts the chats, questions, and answers, and estimates what they cost.</li>
           <li><strong>Reviews</strong> is the thumbs-up share after a chat ends. Skipped ratings do not count. Only admins see it.</li>
@@ -160,7 +161,7 @@ pnpm dev:server`}</pre>
             <tr><td><code>CORS_ORIGIN</code></td><td><code>*</code></td><td>Sites allowed to embed the bubble, until Access is saved</td></tr>
             <tr><td><code>ADMIN_KEY</code></td><td>generated once</td><td>Recovery sign-in. Set it so it stays the same</td></tr>
             <tr><td><code>WIDGET_TITLE</code></td><td><code>Support</code></td><td>Bubble title, until Settings is saved</td></tr>
-            <tr><td><code>WIDGET_ACCENT</code></td><td><code>#111827</code></td><td>Bubble color</td></tr>
+            <tr><td><code>WIDGET_ACCENT</code></td><td><code>#111827</code></td><td>Bubble accent until a theme is saved</td></tr>
             <tr><td><code>WIDGET_GREETING</code></td><td><code>Hi! How can we help?</code></td><td>First line of a new chat</td></tr>
           </tbody>
         </table>

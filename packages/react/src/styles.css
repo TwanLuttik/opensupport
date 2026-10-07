@@ -1,9 +1,15 @@
 .osb-root {
   --osb-accent: #111827;
+  --osb-accent-text: #ffffff;
+  --osb-header: var(--osb-accent);
+  --osb-header-text: #ffffff;
+  --osb-panel: #ffffff;
   --osb-ink: #16181d;
   --osb-muted: #6d727c;
   --osb-line: rgba(22, 24, 29, 0.1);
   --osb-canvas: #f4f5f7;
+  --osb-agent: #ffffff;
+  --osb-composer: #ffffff;
   position: fixed;
   left: 20px;
   bottom: 20px;
@@ -32,7 +38,7 @@
   border: 0;
   border-radius: 999px;
   background: var(--osb-accent);
-  color: #fff;
+  color: var(--osb-accent-text);
   cursor: pointer;
   display: grid;
   place-items: center;
@@ -86,12 +92,13 @@
   bottom: 68px;
   width: min(380px, calc(100vw - 32px));
   height: min(560px, calc(100dvh - 112px));
-  background: #fff;
+  background: var(--osb-panel);
+  color: var(--osb-ink);
   border-radius: 22px;
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  border: 1px solid rgba(22, 24, 29, 0.08);
+  border: 1px solid var(--osb-line);
   box-shadow:
     0 1px 1px rgba(17, 24, 39, 0.04),
     0 24px 60px rgba(17, 24, 39, 0.18);
@@ -118,7 +125,7 @@
   padding: 10px 12px;
   border-radius: 12px;
   background: var(--osb-accent);
-  color: white;
+  color: var(--osb-accent-text);
   text-align: center;
   font-size: 13px;
   font-weight: 640;
@@ -148,8 +155,8 @@
 }
 
 .osb-header {
-  color: white;
-  background: var(--osb-accent);
+  color: var(--osb-header-text);
+  background: var(--osb-header);
   padding: 14px 12px 14px 14px;
   display: flex;
   align-items: center;
@@ -283,6 +290,52 @@
   cursor: progress;
 }
 
+.osb-confirm {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(22, 24, 29, 0.42);
+}
+
+.osb-confirm-card {
+  width: min(300px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+  border-radius: 16px;
+  background: var(--osb-panel);
+  color: var(--osb-ink);
+  box-shadow: 0 16px 40px rgba(17, 24, 39, 0.22);
+}
+
+.osb-confirm-card h3,
+.osb-confirm-card p {
+  margin: 0;
+}
+
+.osb-confirm-card h3 {
+  font-size: 16px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+
+.osb-confirm-card p {
+  font-size: 13.5px;
+  line-height: 1.45;
+  color: var(--osb-muted);
+}
+
+.osb-confirm-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 4px;
+}
+
 .osb-welcome {
   margin: auto 0;
   display: flex;
@@ -303,7 +356,7 @@
   border: 0;
   border-radius: 999px;
   background: var(--osb-accent);
-  color: white;
+  color: var(--osb-accent-text);
   padding: 10px 16px;
   font: inherit;
   font-size: 14px;
@@ -356,7 +409,7 @@
 .osb-topic {
   border: 1px solid var(--osb-line);
   border-radius: 999px;
-  background: white;
+  background: var(--osb-panel);
   color: var(--osb-ink);
   padding: 10px 14px;
   font: inherit;
@@ -369,7 +422,7 @@
 .osb-topic:hover,
 .osb-topic.is-selected {
   border-color: var(--osb-accent);
-  background: color-mix(in srgb, var(--osb-accent) 8%, white);
+  background: color-mix(in srgb, var(--osb-accent) 8%, var(--osb-panel));
 }
 
 .osb-topic:disabled {
@@ -400,7 +453,7 @@
   height: 44px;
   border-radius: 999px;
   border: 1px solid var(--osb-line);
-  background: white;
+  background: var(--osb-panel);
   color: var(--osb-ink);
   display: grid;
   place-items: center;
@@ -519,7 +572,7 @@
   font-size: 14px;
   font-weight: 450;
   color: var(--osb-ink);
-  background: white;
+  background: var(--osb-panel);
 }
 
 .osb-field textarea {
@@ -651,7 +704,7 @@
 
 .osb-message-visitor .osb-bubble {
   background: var(--osb-accent);
-  color: white;
+  color: var(--osb-accent-text);
   border-bottom-right-radius: 6px;
 }
 
@@ -661,7 +714,7 @@
 }
 
 .osb-message-agent .osb-bubble {
-  background: white;
+  background: var(--osb-agent);
   color: var(--osb-ink);
   border: 1px solid var(--osb-line);
   border-bottom-left-radius: 6px;
@@ -702,6 +755,19 @@
   margin-top: -2px;
 }
 
+.osb-response {
+  margin: 0;
+  color: var(--osb-muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.osb-waiting .osb-response {
+  display: block;
+  margin-top: 2px;
+  font-size: 11px;
+}
+
 .osb-hint,
 .osb-error {
   margin: 0;
@@ -725,7 +791,7 @@
   gap: 8px;
   padding: 12px;
   border-top: 1px solid var(--osb-line);
-  background: white;
+  background: var(--osb-composer);
 }
 
 .osb-credit {
@@ -735,7 +801,7 @@
   flex-direction: column;
   align-items: center;
   gap: 1px;
-  background: white;
+  background: var(--osb-composer);
   border-top: 1px solid var(--osb-line);
   color: var(--osb-muted);
   font-size: 10px;
@@ -787,6 +853,38 @@
 .osb-attach .osb-icon {
   width: 18px;
   height: 18px;
+}
+
+.osb-attach[data-tip]::after {
+  content: attr(data-tip);
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 8px);
+  padding: 5px 8px;
+  border-radius: 8px;
+  background: var(--osb-ink);
+  color: var(--osb-panel);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.osb-attach[data-tip] + .osb-attach[data-tip]::after {
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.osb-attach[data-tip]:hover::after,
+.osb-attach[data-tip]:focus-within::after {
+  opacity: 1;
+}
+
+.osb-attach:disabled[data-tip]::after {
+  content: none;
 }
 
 .osb-upload {
@@ -913,7 +1011,7 @@
 
 .osb-composer textarea:focus {
   outline: none;
-  background: white;
+  background: var(--osb-panel);
   border-color: transparent;
   box-shadow: 0 0 0 2px var(--osb-accent);
 }
@@ -930,7 +1028,7 @@
   border: 0;
   border-radius: 14px;
   background: var(--osb-accent);
-  color: white;
+  color: var(--osb-accent-text);
   display: grid;
   place-items: center;
   cursor: pointer;
@@ -950,7 +1048,7 @@
 
 .osb-send.is-sending:disabled {
   background: var(--osb-accent);
-  color: white;
+  color: var(--osb-accent-text);
   cursor: progress;
 }
 

@@ -82,10 +82,31 @@ export interface QuickAction {
   label: string;
 }
 
+export type BubbleThemeId = "ink" | "paper" | "forest" | "ocean" | "dusk" | "custom";
+
+export interface BubbleThemeColors {
+  accent: string;
+  accentText: string;
+  header: string;
+  headerText: string;
+  panel: string;
+  canvas: string;
+  ink: string;
+  muted: string;
+  agentBubble: string;
+  composer: string;
+}
+
+export interface BubbleTheme {
+  id: BubbleThemeId;
+  colors: BubbleThemeColors;
+}
+
 export interface WidgetSettings {
   title: string;
   subtitle: string;
   accentColor: string;
+  theme: BubbleTheme;
   placeholder: string;
   greeting: string;
   waitingMessage: string;
@@ -95,6 +116,7 @@ export interface WidgetSettings {
   formFields: FormFieldDraft[];
   quickActions: QuickAction[];
   logoUrl: string | null;
+  showResponseTime: boolean;
 }
 
 export interface Webhook {
