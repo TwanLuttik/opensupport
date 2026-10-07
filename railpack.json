@@ -1,0 +1,11 @@
+{
+  "$schema": "https://schema.railpack.com",
+  "steps": {
+    "build": {
+      "commands": ["...", "pnpm --filter @open-support/dashboard build", "pnpm --filter @open-support/server build"]
+    }
+  },
+  "deploy": {
+    "startCommand": "node packages/server/dist/cli.js"
+  }
+}

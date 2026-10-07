@@ -48,7 +48,7 @@ On first boot without `ADMIN_KEY`, a one-time admin key is printed. Set `ADMIN_K
 
 ## Deploy on Railway
 
-One service runs the API and the dashboard. Node 22 is pinned in `nixpacks.toml`. The root `build` script compiles the dashboard before the server, and the start command is `node packages/server/dist/cli.js`. Railway sets `PORT`.
+One service runs the API and the dashboard. Railway builds with Railpack, which reads `railpack.json`: it compiles the dashboard and then the server, and starts `node packages/server/dist/cli.js`. The React widget and the SDK are not built or started. Node 22 comes from `engines` and `nixpacks.toml`. Railway sets `PORT`.
 
 The container disk is wiped on every deploy. Add a volume mounted at `/data`, then set:
 
