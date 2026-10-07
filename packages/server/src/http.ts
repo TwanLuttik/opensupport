@@ -5,9 +5,9 @@ import type { ServerConfig } from "./config.js";
 import { createApiToken, newId, newSecret, parseApiToken, safeEqual, sha256 } from "./crypto.js";
 import { SupportStore } from "./db.js";
 import { checkTelegram, deliverEvent, pollTelegram, type NotifyPayload } from "./notify.js";
-import { OPENAI_SECRET_KEY, buildAiMessages, isOpenAiModel, runOpenAi } from "./ai.js";
+import { OPENAI_SECRET_KEY, buildAiMessages, isOpenAiModel, normalizeAiActions, runOpenAi, splitAiActions } from "./ai.js";
 import { SlidingWindow, clientAddress } from "./ratelimit.js";
-import { hoursSchema, isOpenNow, normalizeWidget, settingsSchema, toSettingsView, widgetSchema } from "./settings.js";
+import { aiActionSchema, hoursSchema, isOpenNow, normalizeWidget, settingsSchema, toSettingsView, widgetSchema } from "./settings.js";
 import { DASHBOARD_PAGES, dashboardFile, dashboardMissingHtml } from "./dashboard.js";
 import type { Account, Attachment, ServerSettings, WebhookEndpoint, WebhookEvent } from "./types.js";
 import { prepareImageUpload, prepareUpload, readBody, serveUpload, UploadStore, UPLOAD_CHUNK_BYTES } from "./uploads.js";
@@ -113,6 +113,8 @@ const aiInputSchema = z.object({
 
 const aiContextSchema = z.object({
   context: z.string().max(50000),
+  /** Omit to leave the saved actions alone. */
+  actions: z.array(aiActionSchema).max(20).optional(),
 });
 
 /** A short line for the bubble, such as "Usually accepted in 2 min". */
@@ -223,6 +225,8 @@ const attachmentSchema = z.object({
 const messageSchema = z.object({
   body: z.string().trim().max(8000).default(""),
   attachmentIds: z.array(z.string().regex(/^[a-f0-9]{24}$/)).max(8).optional(),
+  /** Set when the bubble sent this message from an AI action button. */
+  actionLabel: z.string().trim().min(1).max(80).optional(),
 });
 
 const agentMessageSchema = z.object({
@@ -340,6 +344,7 @@ export function createApp(config: ServerConfig): SupportApp {
     return {
       enabled: ready,
       agentName: settings.ai.agentName,
+      actions: normalizeAiActions(settings.ai.actions).map((action) => action.id),
     };
   }
 
@@ -574,6 +579,7 @@ export function createApp(config: ServerConfig): SupportApp {
             role: "visitor",
             body: messageBody(body.body, body.attachmentIds),
             attachments: takeAttachments(pendingAttachments, conversation.id, body.attachmentIds),
+            actionLabel: body.actionLabel,
           });
           emit("message.created", conversation.id, message.id);
           send(res, 201, { message });
@@ -636,10 +642,16 @@ export function createApp(config: ServerConfig): SupportApp {
             },
             fetch,
           );
+          const parsed = splitAiActions(reply.body, settings.ai.actions);
+          if (!parsed.body && parsed.actionIds.length === 0) {
+            send(res, 502, { error: "The model returned an empty reply" });
+            return;
+          }
           const message = store.addMessage(conversation.id, {
             role: "agent",
-            body: reply.body,
+            body: parsed.body,
             agentName: settings.ai.agentName,
+            actionIds: parsed.actionIds,
           });
           store.recordAiUsage({
             conversationId: conversation.id,
@@ -1196,7 +1208,14 @@ export function createApp(config: ServerConfig): SupportApp {
         if (!requireDashboard(req, res)) return;
         const body = await readJson(req, aiContextSchema);
         const settings = currentSettings();
-        store.saveSettings({ ...settings, ai: { ...settings.ai, context: body.context } });
+        store.saveSettings({
+          ...settings,
+          ai: {
+            ...settings.ai,
+            context: body.context,
+            actions: body.actions ? normalizeAiActions(body.actions) : settings.ai.actions,
+          },
+        });
         send(res, 200, { ai: settingsView().ai });
         return;
       }

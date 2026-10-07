@@ -31,6 +31,9 @@ export interface Message {
   attachments?: Attachment[];
   agentName?: string | null;
   createdAt: string;
+  actionIds?: number[];
+  /** Set when the visitor shared this by pressing an AI action button. */
+  actionLabel?: string;
 }
 
 export interface PageVisit {
@@ -138,11 +141,18 @@ export interface OfficeHours {
   closedMessage: string;
 }
 
+export interface AiAction {
+  id: number;
+  label: string;
+  description: string;
+}
+
 export interface AiSettingsView {
   enabled: boolean;
   model: string;
   agentName: string;
   context: string;
+  actions: AiAction[];
   hasApiKey: boolean;
   rateLimitEnabled: boolean;
   rateLimit: number;

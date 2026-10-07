@@ -22,6 +22,9 @@ test("a refresh of a dashboard screen returns the app shell", () => {
     assert.equal(dashboardFile("/settings/agent")?.type.startsWith("text/html"), true);
     assert.equal(dashboardFile("/statistics/ai")?.type.startsWith("text/html"), true);
     assert.equal(dashboardFile("/statistics/general")?.type.startsWith("text/html"), true);
+    assert.equal(dashboardFile("/docs/react")?.type.startsWith("text/html"), true);
+    assert.equal(dashboardFile("/docs/api")?.type.startsWith("text/html"), true);
+    assert.equal(dashboardFile("/docs/sdk")?.type.startsWith("text/html"), true);
     const asset = dashboardFile("/assets/index.js");
     assert.equal(asset?.type.startsWith("text/javascript"), true);
     assert.equal(dashboardFile("/assets/missing.js"), null);

@@ -27,4 +27,6 @@ await support.closeConversation(conversations.items[0].id);
 
 `nextCursor` is `null` on the last page. Pass it back as `cursor` to continue. Conversations are newest first. Messages are oldest first.
 
+AI replies are normal agent messages. When the model asked the visitor's page for data, `actionIds` lists the action numbers configured in the dashboard and `body` does not include the `%%[1,2]%%` marker. This package does not run those page handlers. The React bubble does, from its `actions` prop.
+
 The package is not on npm yet. From this repo, `pnpm --filter @open-support/sdk build`, then link `packages/sdk` into the app the same way as `@open-support/react`.

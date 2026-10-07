@@ -1,4 +1,4 @@
-import type { AiSettings, Message } from "./types.js";
+import type { AiAction, AiSettings, Message } from "./types.js";
 
 export const OPENAI_SECRET_KEY = "openai:key";
 
@@ -28,6 +28,7 @@ export interface ChatTurn {
 /** Turns the saved knowledge and the transcript into a chat the model can answer. */
 export function buildAiMessages(ai: AiSettings, messages: Message[]): ChatTurn[] {
   const knowledge = ai.context.trim();
+  const actions = normalizeAiActions(ai.actions);
   const instructions = [
     `You are ${ai.agentName}, a support agent answering in a website chat.`,
     "Reply in plain text, in the visitor's language, and keep it short.",
@@ -37,6 +38,18 @@ export function buildAiMessages(ai: AiSettings, messages: Message[]): ChatTurn[]
   if (knowledge) {
     instructions.push("", "Knowledge:", knowledge);
   }
+  if (actions.length > 0) {
+    instructions.push(
+      "",
+      "Client actions:",
+      "Each action below is a button on the visitor's page. It returns facts about this visitor that are not in the knowledge.",
+      "If the answer depends on one of those facts and the conversation does not already contain the returned text, you must ask for it.",
+      "Do that on the first reply. A short sentence, then the marker. Do not guess, and do not list every possibility instead.",
+      "End that reply with %%[id]%% or %%[id,id]%% using only the ids below. The marker is the last thing in the reply. Do not describe the marker or tell them to type the fact.",
+      "After they send the action result, answer with the numbers. Do not ask again.",
+      ...actions.map((action) => `${action.id}: ${action.description}`),
+    );
+  }
   const turns: ChatTurn[] = [{ role: "system", content: instructions.join("\n") }];
   for (const message of messages) {
     const body = message.body.trim();
@@ -45,6 +58,43 @@ export function buildAiMessages(ai: AiSettings, messages: Message[]): ChatTurn[]
     else if (message.role === "agent") turns.push({ role: "assistant", content: body });
   }
   return turns;
+}
+
+const ACTION_MARKER = /%%\s*(\[[\s\d,]*\])\s*%%\s*$/;
+
+/** Drops duplicate ids and keeps the dashboard order. */
+export function normalizeAiActions(actions: AiAction[] | undefined): AiAction[] {
+  const seen = new Set<number>();
+  const next: AiAction[] = [];
+  for (const action of actions ?? []) {
+    if (seen.has(action.id)) continue;
+    seen.add(action.id);
+    next.push(action);
+  }
+  return next;
+}
+
+/**
+ * Separates a reply from a trailing action caller such as `%%[1,2]%%`.
+ * Ids that are not configured are ignored. The marker is never stored.
+ */
+export function splitAiActions(body: string, actions: AiAction[] | undefined): { body: string; actionIds: number[] } {
+  const match = body.match(ACTION_MARKER);
+  if (!match || match.index === undefined) return { body: body.trim(), actionIds: [] };
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(match[1] ?? "");
+  } catch {
+    return { body: body.trim(), actionIds: [] };
+  }
+  if (!Array.isArray(parsed)) return { body: body.trim(), actionIds: [] };
+  const allowed = new Set(normalizeAiActions(actions).map((action) => action.id));
+  const actionIds: number[] = [];
+  for (const id of parsed) {
+    if (typeof id !== "number" || !Number.isInteger(id) || !allowed.has(id) || actionIds.includes(id)) continue;
+    actionIds.push(id);
+  }
+  return { body: body.slice(0, match.index).trim(), actionIds };
 }
 
 export interface OpenAiReply {

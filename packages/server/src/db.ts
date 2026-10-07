@@ -142,6 +142,10 @@ export interface PostMessageInput {
   body: string;
   attachments?: Attachment[];
   agentName?: string;
+  /** Action ids requested by an AI reply. Omitted for ordinary messages. */
+  actionIds?: number[];
+  /** Button label when a visitor message was sent by an action. */
+  actionLabel?: string;
 }
 
 function nowIso(): string {
@@ -182,7 +186,21 @@ function rowToMessage(row: Record<string, unknown>): Message {
     attachments: JSON.parse(String(row.attachments_json ?? "[]")) as Attachment[],
     createdAt: String(row.created_at),
     agentName: row.agent_name ? String(row.agent_name) : undefined,
+    actionIds: parseActionIds(row.action_ids_json),
+    actionLabel: row.action_label ? String(row.action_label) : undefined,
   };
+}
+
+function parseActionIds(value: unknown): number[] | undefined {
+  if (!value) return undefined;
+  try {
+    const parsed = JSON.parse(String(value)) as unknown;
+    if (!Array.isArray(parsed)) return undefined;
+    const ids = parsed.filter((id): id is number => typeof id === "number" && Number.isInteger(id));
+    return ids.length > 0 ? ids : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 export class SupportStore {
@@ -210,6 +228,8 @@ export class SupportStore {
     this.ensureColumn("accounts", "avatar_url", "TEXT");
     this.ensureColumn("accounts", "presence", "TEXT NOT NULL DEFAULT 'online'");
     this.ensureColumn("accounts", "last_seen_at", "TEXT");
+    this.ensureColumn("messages", "action_ids_json", "TEXT");
+    this.ensureColumn("messages", "action_label", "TEXT");
     this.db.exec("CREATE INDEX IF NOT EXISTS conversations_identifier ON conversations (identifier)");
   }
 
@@ -482,8 +502,8 @@ export class SupportStore {
     const seq = this.nextSeq("message");
     this.db
       .prepare(
-        `INSERT INTO messages (id, conversation_id, role, body, attachments_json, agent_name, created_at, seq)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO messages (id, conversation_id, role, body, attachments_json, agent_name, created_at, seq, action_ids_json, action_label)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         id,
@@ -494,6 +514,8 @@ export class SupportStore {
         input.agentName ?? null,
         createdAt,
         seq,
+        input.actionIds && input.actionIds.length > 0 ? JSON.stringify(input.actionIds) : null,
+        input.actionLabel?.trim() || null,
       );
     const unreadDelta = input.role === "visitor" ? 1 : 0;
     // Only a real agent reply counts as handling the ticket. A system note

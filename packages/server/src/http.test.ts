@@ -940,6 +940,7 @@ test("an enabled AI agent answers from saved knowledge and a human chat does not
     assert.equal(message.message.role, "agent");
     assert.equal(message.message.agentName, "Ada Bot");
     assert.equal(message.message.body, "Refunds last 30 days.");
+    assert.equal(message.message.actionIds, undefined);
     assert.equal(seen[0]?.model, "gpt-4o");
     assert.equal(seen[0]?.knowledge, true);
 
@@ -1009,6 +1010,84 @@ test("revoked tokens stop working", async () => {
     });
     assert.equal(denied.status, 401);
   } finally {
+    await app.close();
+  }
+});
+
+
+test("an AI reply can ask the page for configured actions", async () => {
+  const { app, base } = await start();
+  setOpenAiCompleter(async (input) => {
+    const knowledge = input.messages[0]?.content ?? "";
+    const asked = knowledge.includes("1: Returns the signed-in plan");
+    return {
+      body: asked ? "I need your plan to answer that.\n%%[1, 8]%%" : "I do not know which actions exist.",
+      promptTokens: 20,
+      completionTokens: 8,
+    };
+  });
+  try {
+    const login = await fetch(`${base}/api/dashboard/session`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ adminKey: "admin-test-key" }),
+    });
+    const cookie = login.headers.get("set-cookie")?.split(";")[0];
+    const saved = await fetch(`${base}/api/dashboard/ai`, {
+      method: "PUT",
+      headers: { "content-type": "application/json", cookie: cookie! },
+      body: JSON.stringify({ enabled: true, model: "gpt-4o-mini", agentName: "Ada Bot", apiKey: "sk-test" }),
+    });
+    assert.equal(saved.status, 200);
+    const knowledge = await fetch(`${base}/api/dashboard/ai/context`, {
+      method: "PUT",
+      headers: { "content-type": "application/json", cookie: cookie! },
+      body: JSON.stringify({
+        context: "Plans renew monthly.",
+        actions: [
+          { id: 1, label: "Plan", description: "Returns the signed-in plan." },
+          { id: 1, label: "Duplicate", description: "Ignored duplicate." },
+        ],
+      }),
+    });
+    assert.equal(knowledge.status, 200);
+    const view = (await (await fetch(`${base}/api/dashboard/settings`, { headers: { cookie: cookie! } })).json()) as {
+      settings: { ai: { actions: Array<{ id: number; description: string }> } };
+    };
+    assert.deepEqual(view.settings.ai.actions.map((action) => action.id), [1]);
+    const config = (await (await fetch(`${base}/api/widget/config`)).json()) as { ai: { actions: number[] } };
+    assert.deepEqual(config.ai.actions, [1]);
+
+    const started = await fetch(`${base}/api/widget/conversations`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ visitorName: "Ada", handler: "ai" }),
+    });
+    const session = (await started.json()) as { conversation: { id: string }; visitorToken: string };
+    await fetch(`${base}/api/widget/conversations/${session.conversation.id}/messages`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-visitor-token": session.visitorToken },
+      body: JSON.stringify({ body: "When does my plan renew?" }),
+    });
+    const reply = await fetch(`${base}/api/widget/conversations/${session.conversation.id}/ai`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-visitor-token": session.visitorToken },
+      body: "{}",
+    });
+    assert.equal(reply.status, 201);
+    const message = (await reply.json()) as { message: { body: string; actionIds?: number[] } };
+    assert.equal(message.message.body, "I need your plan to answer that.");
+    assert.deepEqual(message.message.actionIds, [1]);
+
+    const thread = await fetch(`${base}/api/widget/conversations/${session.conversation.id}`, {
+      headers: { "x-visitor-token": session.visitorToken },
+    });
+    const stored = (await thread.json()) as { messages: Array<{ body: string; actionIds?: number[] }> };
+    const agent = stored.messages.find((item) => item.body.startsWith("I need your plan"));
+    assert.deepEqual(agent?.actionIds, [1]);
+    assert.equal(stored.messages.some((item) => item.body.includes("%%")), false);
+  } finally {
+    setOpenAiCompleter(null);
     await app.close();
   }
 });

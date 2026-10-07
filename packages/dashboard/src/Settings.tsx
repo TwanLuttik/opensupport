@@ -1,11 +1,12 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { NavLink, Navigate, Route, Routes } from "react-router-dom";
+import { ColorPicker } from "./ColorPicker.js";
 import { Accounts } from "./Accounts.js";
 import { api, authHeaders, uploadImage } from "./api.js";
 import { Status } from "./components.js";
 import { fieldId } from "./format.js";
 import { COLOR_FIELDS, presetById, THEME_PRESETS, themeFromWidget } from "./themes.js";
-import type { AiSettingsView, ApiToken, BubbleThemeColors, BubbleThemeId, FormFieldDraft, NotifyEvent, QuickAction, SettingsView, Webhook, WidgetSettings } from "./types.js";
+import type { AiAction, AiSettingsView, ApiToken, BubbleThemeColors, BubbleThemeId, FormFieldDraft, NotifyEvent, QuickAction, SettingsView, Webhook, WidgetSettings } from "./types.js";
 
 const EMPTY_STATUS = { text: "", ok: false };
 
@@ -13,7 +14,7 @@ const SECTIONS = [
   { to: "/settings/appearance", label: "Appearance", hint: "Theme, name, greeting", admin: false },
   { to: "/settings/start", label: "Start screen", hint: "Topics and the form", admin: false },
   { to: "/settings/ai", label: "AI models", hint: "OpenAI key and model", admin: false },
-  { to: "/settings/agent", label: "AI agent", hint: "Knowledge the agent uses", admin: false },
+  { to: "/settings/agent", label: "AI agent", hint: "Knowledge and client actions", admin: false },
   { to: "/settings/access", label: "Access", hint: "Who can embed it", admin: false },
   { to: "/settings/notifications", label: "Notifications", hint: "Webhooks, Telegram, tokens", admin: false },
   { to: "/settings/accounts", label: "Accounts", hint: "People who can use the desk", admin: true },
@@ -63,7 +64,7 @@ export function Settings({ adminKey, canManage }: { adminKey: string; canManage:
     setCors(settings.corsOrigin);
     setHooks(settings.webhooks);
     setTelegram(settings.telegram);
-    setAi(settings.ai ?? { enabled: false, model: "gpt-4o-mini", agentName: "AI assistant", context: "", hasApiKey: false, rateLimitEnabled: false, rateLimit: 20 });
+    setAi(settings.ai ?? { enabled: false, model: "gpt-4o-mini", agentName: "AI assistant", context: "", actions: [], hasApiKey: false, rateLimitEnabled: false, rateLimit: 20 });
     loadTokens();
   }
 
@@ -389,10 +390,18 @@ export function Settings({ adminKey, canManage }: { adminKey: string; canManage:
                   onChange={setAi}
                   onSubmit={async (event) => {
                     event.preventDefault();
+                    const used = new Set<number>();
+                    const actions = (ai.actions ?? [])
+                      .map((action) => ({
+                        id: action.id,
+                        label: action.label.trim(),
+                        description: action.description.trim(),
+                      }))
+                      .filter((action) => action.label && action.description && !used.has(action.id) && used.add(action.id));
                     try {
                       const saved = await api<{ ai: AiSettingsView }>("/api/dashboard/ai/context", {
                         method: "PUT",
-                        body: JSON.stringify({ context: ai.context }),
+                        body: JSON.stringify({ context: ai.context, actions }),
                       });
                       setAi(saved.ai);
                       setContextStatus({ text: "Saved.", ok: true });
@@ -579,17 +588,7 @@ function ThemePreview({ colors, title }: { colors: BubbleThemeColors; title: str
 }
 
 function ColorField({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
-  const safe = /^#[0-9a-fA-F]{6}$/.test(value) ? value : "#111827";
-  const id = `theme-${label.toLowerCase().replace(/\s+/g, "-")}`;
-  return (
-    <label className="theme-color" htmlFor={id}>
-      <span>{label}</span>
-      <span className="color-row">
-        <input type="color" value={safe} aria-label={`Pick ${label}`} onChange={(event) => onChange(event.target.value)} />
-        <input className="input" id={id} value={value} pattern="#[0-9a-fA-F]{6}" onChange={(event) => onChange(event.target.value)} />
-      </span>
-    </label>
-  );
+  return <ColorPicker label={label} value={value} onChange={onChange} />;
 }
 
 function LogoField({ logoUrl, onChange }: { logoUrl: string | null; onChange: (logoUrl: string | null) => void }) {
@@ -854,6 +853,14 @@ function AiModels({
   );
 }
 
+function nextActionId(actions: AiAction[]): number {
+  const used = new Set(actions.map((action) => action.id));
+  for (let id = 1; id <= 99; id += 1) {
+    if (!used.has(id)) return id;
+  }
+  return 99;
+}
+
 function AiAgent({
   ai,
   status,
@@ -865,34 +872,113 @@ function AiAgent({
   onChange: (ai: AiSettingsView) => void;
   onSubmit: (event: FormEvent) => void;
 }) {
+  const actions = ai.actions ?? [];
+  function setActions(next: AiAction[]) {
+    onChange({ ...ai, actions: next });
+  }
   return (
-    <Panel
-      title="AI agent"
-      summary="Write the facts the agent should use. It answers from this text and the conversation, and says so when it does not know."
-      onSubmit={onSubmit}
-      status={status}
-      saveLabel="Save knowledge"
-    >
-      <Field
-        label="Knowledge"
-        htmlFor="ai-context"
-        hint="Product facts, policies, and how you want replies to sound. Up to 50,000 characters. Visitors never see this page."
+    <>
+      <Panel
+        title="AI agent"
+        summary="Write the facts the agent should use. It answers from this text and the conversation, and says so when it does not know."
+        onSubmit={onSubmit}
+        status={status}
+        saveLabel="Save knowledge"
       >
-        <textarea
-          className="textarea"
-          id="ai-context"
-          rows={14}
-          maxLength={50000}
-          placeholder={"We ship in the EU within 3 business days.\nRefunds are available for 30 days.\nThe Pro plan includes priority support."}
-          value={ai.context}
-          onChange={(event) => onChange({ ...ai, context: event.target.value })}
-        />
-      </Field>
-      <p className="muted">{ai.context.length.toLocaleString()} / 50,000</p>
-      {!ai.enabled || !ai.hasApiKey ? (
-        <p className="muted">Turn the agent on and save an OpenAI key under AI models before visitors can use this.</p>
-      ) : null}
-    </Panel>
+        <Field
+          label="Knowledge"
+          htmlFor="ai-context"
+          hint="Product facts, policies, and how you want replies to sound. Up to 50,000 characters. Visitors never see this page."
+        >
+          <textarea
+            className="textarea"
+            id="ai-context"
+            rows={14}
+            maxLength={50000}
+            placeholder={"We ship in the EU within 3 business days.\nRefunds are available for 30 days.\nThe Pro plan includes priority support."}
+            value={ai.context}
+            onChange={(event) => onChange({ ...ai, context: event.target.value })}
+          />
+        </Field>
+        <p className="muted">{ai.context.length.toLocaleString()} / 50,000</p>
+        {!ai.enabled || !ai.hasApiKey ? (
+          <p className="muted">Turn the agent on and save an OpenAI key under AI models before visitors can use this.</p>
+        ) : null}
+      </Panel>
+      <Panel
+        title="Client actions"
+        summary="Each action tells the agent it can ask the visitor's page for something. The description is added to the agent's knowledge. The page supplies the button and the text it sends."
+        onSubmit={onSubmit}
+        status={status}
+        saveLabel="Save actions"
+      >
+        {actions.length === 0 ? <p className="muted">No actions yet. The agent will only answer from the knowledge above.</p> : null}
+        {actions.map((action, index) => (
+          <div className="action-draft" key={`${action.id}-${index}`}>
+            <div className="row">
+              <label className="action-id" htmlFor={`ai-action-id-${index}`}>
+                Id
+                <input
+                  className="input"
+                  id={`ai-action-id-${index}`}
+                  type="number"
+                  min={1}
+                  max={99}
+                  required
+                  value={action.id}
+                  onChange={(event) =>
+                    setActions(actions.map((item, itemIndex) => (itemIndex === index ? { ...item, id: Number(event.target.value) } : item)))
+                  }
+                />
+              </label>
+              <label className="grow" htmlFor={`ai-action-label-${index}`}>
+                Name
+                <input
+                  className="input"
+                  id={`ai-action-label-${index}`}
+                  maxLength={80}
+                  required
+                  value={action.label}
+                  placeholder="Current plan"
+                  onChange={(event) =>
+                    setActions(actions.map((item, itemIndex) => (itemIndex === index ? { ...item, label: event.target.value } : item)))
+                  }
+                />
+              </label>
+              <button className="btn btn-destructive btn-sm" type="button" onClick={() => setActions(actions.filter((_, item) => item !== index))}>
+                Remove
+              </button>
+            </div>
+            <label htmlFor={`ai-action-description-${index}`}>
+              What it does
+              <textarea
+                className="textarea"
+                id={`ai-action-description-${index}`}
+                rows={3}
+                maxLength={500}
+                required
+                placeholder="Looks up the signed-in visitor's plan and renewal date. Ask for it when the question depends on their subscription."
+                value={action.description}
+                onChange={(event) =>
+                  setActions(actions.map((item, itemIndex) => (itemIndex === index ? { ...item, description: event.target.value } : item)))
+                }
+              />
+            </label>
+            <p className="muted">The agent reads this and can ask the page with %%[{Number.isInteger(action.id) ? action.id : "?"}].</p>
+          </div>
+        ))}
+        <div className="row">
+          <button
+            className="btn btn-outline btn-sm"
+            type="button"
+            disabled={actions.length >= 20}
+            onClick={() => setActions([...actions, { id: nextActionId(actions), label: "", description: "" }])}
+          >
+            Add action
+          </button>
+        </div>
+      </Panel>
+    </>
   );
 }
 

@@ -16,6 +16,10 @@ export interface SupportMessage {
   attachments: Attachment[];
   createdAt: string;
   agentName?: string;
+  /** Action ids requested at the end of an AI reply. Empty when the model did not ask. */
+  actionIds?: number[];
+  /** Button label when this visitor message was sent by an action. The body stays hidden. */
+  actionLabel?: string;
 }
 
 export interface SupportConversation {
@@ -111,6 +115,8 @@ export interface PublicConfig {
   ai?: {
     enabled: boolean;
     agentName: string;
+    /** Ids of configured client actions. Labels and handlers live in the embedding app. */
+    actions?: number[];
   };
   /** Present when the desk shows how long agents usually take to accept a ticket. */
   responseTime?: {
@@ -121,9 +127,30 @@ export interface PublicConfig {
   staffOnline?: boolean;
 }
 
+/**
+ * A button the bubble shows under an AI reply that asks for client data.
+ * The handler's text is posted as the visitor's next message, so they do not have to type it.
+ */
+export interface AiActionHandler {
+  /** Matches an action id configured in the dashboard (`%%[id]%%`). */
+  id: number;
+  /** Label on the button. */
+  label: string;
+  /**
+   * Reads whatever the page knows and returns the text to send.
+   * Return an empty string to leave the composer alone.
+   */
+  handler: () => string | Promise<string>;
+}
+
 export interface SupportBubbleProps {
   /** Base URL of the self-hosted Open Support server, without a trailing slash. */
   serverUrl: string;
+  /**
+   * Buttons for AI replies that end with action callers (`%%[1,2]%%`).
+   * Only ids configured in the dashboard are offered to the model.
+   */
+  actions?: AiActionHandler[];
   /**
    * Stable id for this visitor, such as your own user id. Conversations started
    * with the same identifier are grouped together in the dashboard. Keep it

@@ -89,6 +89,17 @@ test("client uploads a file in 5 MB chunks and reports progress", async () => {
   assert.equal(calls[1]?.init?.method, "PUT");
 });
 
+test("client marks a message that came from an action button", async () => {
+  let body = "";
+  const fetchImpl: typeof fetch = async (_input, init) => {
+    body = String(init?.body);
+    return new Response(JSON.stringify({ message: { id: "msg_1", actionLabel: "Share my plan" } }), { status: 201 });
+  };
+  const client = createClient("http://localhost:8787", fetchImpl);
+  await client.send({ conversationId: "cnv_1", visitorToken: "secret" }, "{\"plan\":\"pro\"}", undefined, "Share my plan");
+  assert.equal(body, JSON.stringify({ body: "{\"plan\":\"pro\"}", actionLabel: "Share my plan" }));
+});
+
 test("client sends attachment ids with a message", async () => {
   let body = "";
   const fetchImpl: typeof fetch = async (_input, init) => {

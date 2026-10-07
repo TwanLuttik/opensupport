@@ -101,11 +101,34 @@ Put the URL in an env var so local and production point at different servers:
 | Prop | Type | Default | |
 | --- | --- | --- | --- |
 | `serverUrl` | `string` | required | Open Support server origin |
+| `identifier` | `string` | — | Stable id for this person. Conversations that share it are grouped |
+| `actions` | `AiActionHandler[]` | — | Buttons for AI replies that ask the page for data |
 | `visitor` | `{ name?, email?, metadata? }` | — | Sent only when the thread is created |
 | `visitor.metadata` | `Record<string, string>` | — | Extra context, such as plan or page |
 | `pollIntervalMs` | `number` | `3000` | How often an open panel checks for replies |
 | `onOpenChange` | `(open: boolean) => void` | — | Fires when the panel opens or closes |
 | `className` | `string` | — | Added to the fixed root element |
+
+### AI action buttons
+
+The dashboard **AI agent** page can list client actions. Each one has a number and a description of what the page can look up. That description is added to the model's knowledge. When a reply needs that fact, the model ends with `%%[1,2]%%`. The server stores the reply without the marker and sends the numbers as `actionIds`.
+
+Pass a matching `actions` prop. The button label and the handler live in your app, not the dashboard. The handler returns text, and the bubble sends that text as the visitor's next message.
+
+```tsx
+<SupportBubble
+  serverUrl="https://support.example.com"
+  actions={[
+    {
+      id: 1,
+      label: "Share my plan",
+      handler: () => `Plan: ${user.plan}, renews ${user.renewsAt}`,
+    },
+  ]}
+/>
+```
+
+Buttons show under the latest AI reply, and only for ids that reply asked for. A handler that returns an empty string does not send anything.
 
 Title, subtitle, greeting, placeholder, and theme come from the server (`WIDGET_*` env vars, or the dashboard Appearance settings). The widget loads them from `GET /api/widget/config`. A theme is a template (`ink`, `paper`, `forest`, `ocean`, `dusk`) or `custom` with its own colors. The bubble paints those colors as CSS variables on `.osb-root`.
 
@@ -248,6 +271,7 @@ await support.send(
 | `start({ visitorName, visitorEmail, metadata })` | Create a conversation. Returns the visitor token once |
 | `getThread(session, after?)` | Load the thread. `after` is the `createdAt` of the last message you have |
 | `send(session, body)` | Post a visitor message |
+| `askAi(session)` | Ask the model to answer the latest visitor message. `actionIds` lists the page actions that reply requested |
 | `upload(session, { name, type, bytes }, onProgress?)` | Upload a file in 5 MB chunks, up to 50 MB. `onProgress(loaded, total)` fires after each chunk. The bubble shows the bar itself |
 
 ## Styling

@@ -78,7 +78,7 @@ The admin key (`ADMIN_KEY`, or the key printed on first boot) still signs in. Us
 - **Webhooks** POST JSON to your URL for `conversation.created` and `message.created`. The signing secret is shown once. Requests include `X-Open-Support-Signature: sha256=<hmac of the raw body>`.
 - **Telegram** sends those events to a bot chat. Reply to the notification in Telegram and the text is posted back to the visitor. The message you reply to must still contain the `cnv_…` id.
 - **AI models** saves an OpenAI API key and picks the model. The key stays on the server.
-- **AI agent** is extra knowledge the model uses to answer. When the agent is enabled, the bubble lets a visitor chat with it instead of waiting for a person.
+- **AI agent** is extra knowledge the model uses to answer, plus client actions. Each action has a number and a description of what the visitor's page can look up. That description is added to the prompt. When a reply needs it, the model ends with `%%[1,2]%%`. The bubble shows buttons for those numbers, and the embedding app decides the label and the text the click sends. When the agent is enabled, the bubble lets a visitor chat with it instead of waiting for a person.
 - **API tokens** are minted for external apps. The plaintext token is shown once.
 
 Webhook body:
@@ -153,10 +153,13 @@ Visitor endpoints (used by the widget, authorized with `X-Visitor-Token`):
 
 | Method | Path | |
 | --- | --- | --- |
-| `GET` | `/api/widget/config` | Public copy and colors |
-| `POST` | `/api/widget/conversations` | Start a thread, returns `visitorToken` once |
+| `GET` | `/api/widget/config` | Public copy, colors, and configured AI action ids |
+| `POST` | `/api/widget/conversations` | Start a thread, returns `visitorToken` once. `handler: "ai"` starts an AI chat |
 | `GET` | `/api/widget/conversations/:id?after=` | Poll the thread |
 | `POST` | `/api/widget/conversations/:id/messages` | Visitor message |
+| `POST` | `/api/widget/conversations/:id/ai` | Ask the model to answer the latest visitor message |
+
+An AI reply that needs data from the page has `actionIds`, such as `[1, 2]`. The `%%[1,2]%%` marker is not stored in `body`. Post the looked-up text with the visitor message route, then call `/ai` again.
 
 Example reply from an external app:
 
@@ -181,6 +184,9 @@ export function App() {
       serverUrl="https://support.example.com"
       identifier={user.id}
       visitor={{ name: "Ada Lovelace", email: "ada@example.com", metadata: { plan: "pro" } }}
+      actions={[
+        { id: 1, label: "Share my plan", handler: () => `Plan: ${user.plan}` },
+      ]}
     />
   );
 }
@@ -189,6 +195,8 @@ export function App() {
 The bubble is `position: fixed` at the bottom-left. The visitor token is kept in `localStorage` so a refresh resumes the same conversation. The panel polls for agent replies.
 
 `identifier` is your own stable id for the signed-in person. Every conversation started with the same value is grouped under that visitor in the dashboard, where a click opens their card. Leave it off for anonymous visitors. A new conversation still starts a new thread. The identifier only groups them.
+
+`actions` matches the client actions saved on the **AI agent** page. Buttons appear under the latest AI reply when that reply asked for those ids. The handler's text is sent as the visitor's next message. Full props, Next.js, and the lower-level client are in the React readme.
 
 Build every package with `pnpm build` and run tests with `pnpm test`.
 

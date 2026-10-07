@@ -183,7 +183,7 @@ export function App() {
           <Route path="/statistics/*" element={<Statistics />} />
           <Route path="/ai" element={<Navigate to="/statistics/ai" replace />} />
           <Route path="/reviews" element={canManage ? <Reviews /> : <Navigate to="/inbox" replace />} />
-          <Route path="/docs" element={<Docs />} />
+          <Route path="/docs/*" element={<Docs />} />
           <Route path="*" element={<Navigate to="/inbox" replace />} />
         </Routes>
       </main>

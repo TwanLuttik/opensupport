@@ -15,6 +15,7 @@ export {
   sessionStorageKey,
 } from "./client.js";
 export type {
+  AiActionHandler,
   Attachment,
   AuthorRole,
   BubbleTheme,

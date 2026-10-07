@@ -31,11 +31,18 @@ export const DEFAULT_TELEGRAM: TelegramSettings = {
   notifyOn: ["message.created"],
 };
 
+export const aiActionSchema = z.object({
+  id: z.number().int().min(1).max(99),
+  label: z.string().trim().min(1).max(80),
+  description: z.string().trim().min(1).max(500),
+});
+
 export const DEFAULT_AI: AiSettings = {
   enabled: false,
   model: DEFAULT_AI_MODEL,
   agentName: "AI assistant",
   context: "",
+  actions: [],
   rateLimitEnabled: false,
   rateLimit: 20,
 };
@@ -168,6 +175,7 @@ export const settingsSchema = z.object({
         .refine(isOpenAiModel, "Choose an OpenAI model"),
       agentName: z.string().trim().min(1).max(80).default(DEFAULT_AI.agentName),
       context: z.string().max(50000).default(""),
+      actions: z.array(aiActionSchema).max(20).default([]),
       rateLimitEnabled: z.boolean().default(false),
       rateLimit: z.number().int().min(1).max(1000).default(DEFAULT_AI.rateLimit),
     })
@@ -257,6 +265,7 @@ export function toSettingsView(
       model: settings.ai.model,
       agentName: settings.ai.agentName,
       context: settings.ai.context,
+      actions: settings.ai.actions ?? [],
       hasApiKey: secrets.openai,
       rateLimitEnabled: settings.ai.rateLimitEnabled,
       rateLimit: settings.ai.rateLimit,

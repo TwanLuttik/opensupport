@@ -4,7 +4,7 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState, type Animatio
 import { Camera, File, FileArchive, FileAudio, FileCode, FileImage, FileText, FileVideo, ThumbsDown, ThumbsUp } from "lucide-react";
 import { capturePage } from "./screenshot.js";
 import { clearStoredSession, createClient, loadStoredSession, saveStoredSession } from "./client.js";
-import type { Attachment, PublicConfig, StoredSession, SupportBubbleProps, SupportConversation, SupportMessage } from "./types.js";
+import type { AiActionHandler, Attachment, PublicConfig, StoredSession, SupportBubbleProps, SupportConversation, SupportMessage } from "./types.js";
 import { UPLOAD_MAX_BYTES } from "./client.js";
 
 const DEFAULT_CONFIG: PublicConfig = {
@@ -106,6 +106,7 @@ export function SupportBubble({
   serverUrl,
   identifier,
   visitor,
+  actions = [],
   pollIntervalMs = 3000,
   onOpenChange,
   className,
@@ -140,6 +141,7 @@ export function SupportBubble({
   const [hasSession, setHasSession] = useState(false);
   const [withAi, setWithAi] = useState(false);
   const [aiThinking, setAiThinking] = useState(false);
+  const [actionBusy, setActionBusy] = useState<number | null>(null);
   const [unseen, setUnseen] = useState(0);
   const [staffOnline, setStaffOnline] = useState(false);
   const [pendingFile, setPendingFile] = useState<File | null>(null);
@@ -490,6 +492,18 @@ export function SupportBubble({
     if (file) chooseFile(file);
   }
 
+  async function postVisitorMessage(session: StoredSession, body: string, attachmentIds?: string[], actionLabel?: string) {
+    const message = await client.send(session, body, attachmentIds, actionLabel);
+    noteAgents([message], false);
+    setMessages((current) => mergeMessages(current, [message]));
+    if (withAi && body.trim()) {
+      setAiThinking(true);
+      const reply = await client.askAi(session);
+      noteAgents([reply], false);
+      setMessages((current) => mergeMessages(current, [reply]));
+    }
+  }
+
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
     const body = draft.trim();
@@ -507,23 +521,34 @@ export function SupportBubble({
         });
         attachmentIds = [uploaded.id];
       }
-      const message = await client.send(session, body, attachmentIds);
-      noteAgents([message], false);
-      setMessages((current) => mergeMessages(current, [message]));
+      await postVisitorMessage(session, body, attachmentIds);
       setDraft("");
       setPendingFile(null);
-      if (withAi && body) {
-        setAiThinking(true);
-        const reply = await client.askAi(session);
-        noteAgents([reply], false);
-        setMessages((current) => mergeMessages(current, [reply]));
-      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not send your message.");
     } finally {
       setSending(false);
       setAiThinking(false);
       setUploadProgress(null);
+    }
+  }
+
+  async function runAction(action: AiActionHandler) {
+    const session = sessionRef.current;
+    if (!session || sending || closed || actionBusy !== null) return;
+    setActionBusy(action.id);
+    setSending(true);
+    setError(null);
+    try {
+      const body = (await action.handler()).trim();
+      if (!body) return;
+      await postVisitorMessage(session, body, undefined, action.label);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not run that action.");
+    } finally {
+      setActionBusy(null);
+      setSending(false);
+      setAiThinking(false);
     }
   }
 
@@ -762,6 +787,10 @@ export function SupportBubble({
                     next={messages[index + 1]}
                     serverUrl={serverUrl}
                     assigneeName={assigneeName}
+                    actions={withAi && !closed && index === messages.length - 1 ? actionsForMessage(message, actions) : []}
+                    actionBusy={actionBusy}
+                    disabled={sending || closed}
+                    onAction={(action) => void runAction(action)}
                   />
                 ))
               : null}
@@ -1211,18 +1240,38 @@ function TypingIndicator({ name }: { name: string }) {
   );
 }
 
+function actionsForMessage(message: SupportMessage, actions: AiActionHandler[]): AiActionHandler[] {
+  const ids = message.actionIds ?? [];
+  if (message.role !== "agent" || ids.length === 0) return [];
+  const byId = new Map(actions.map((action) => [action.id, action]));
+  const matched: AiActionHandler[] = [];
+  for (const id of ids) {
+    const action = byId.get(id);
+    if (action && !matched.some((item) => item.id === action.id)) matched.push(action);
+  }
+  return matched;
+}
+
 function MessageView({
   message,
   previous,
   next,
   serverUrl,
   assigneeName,
+  actions = [],
+  actionBusy = null,
+  disabled = false,
+  onAction,
 }: {
   message: SupportMessage;
   previous?: SupportMessage;
   next?: SupportMessage;
   serverUrl: string;
   assigneeName?: string | null;
+  actions?: AiActionHandler[];
+  actionBusy?: number | null;
+  disabled?: boolean;
+  onAction?: (action: AiActionHandler) => void;
 }) {
   const time = formatMessageTime(message.createdAt);
   const files = message.attachments ?? [];
@@ -1232,7 +1281,12 @@ function MessageView({
   return (
     <article className={["osb-message", `osb-message-${message.role}`, continues ? "is-continued" : ""].filter(Boolean).join(" ")}>
       {name && !continues ? <span className="osb-agent">{name}</span> : null}
-      {message.body ? (
+      {message.actionLabel ? (
+        <div className="osb-provided">
+          <span className="osb-provided-mark" aria-hidden="true" />
+          <span>Provided {message.actionLabel}</span>
+        </div>
+      ) : message.body ? (
         <div className="osb-bubble">
           <p>{message.body}</p>
         </div>
@@ -1241,6 +1295,21 @@ function MessageView({
         <div className="osb-files">
           {files.map((file) => (
             <FileView key={file.id} file={file} serverUrl={serverUrl} />
+          ))}
+        </div>
+      ) : null}
+      {actions.length > 0 ? (
+        <div className="osb-actions">
+          {actions.map((action) => (
+            <button
+              key={action.id}
+              type="button"
+              className="osb-action"
+              disabled={disabled || actionBusy !== null}
+              onClick={() => onAction?.(action)}
+            >
+              {actionBusy === action.id ? "Sending…" : action.label}
+            </button>
           ))}
         </div>
       ) : null}

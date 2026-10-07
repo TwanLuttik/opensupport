@@ -22,7 +22,7 @@ export interface WidgetClient {
     conversation: SupportConversation;
     messages: SupportMessage[];
   }>;
-  send(session: StoredSession, body: string, attachmentIds?: string[]): Promise<SupportMessage>;
+  send(session: StoredSession, body: string, attachmentIds?: string[], actionLabel?: string): Promise<SupportMessage>;
   /** Asks the configured model to answer the latest visitor message. */
   askAi(session: StoredSession): Promise<SupportMessage>;
   /** The visitor ends the thread. Later messages are rejected until a new conversation starts. */
@@ -70,13 +70,17 @@ export function createClient(serverUrl: string, fetchImpl: typeof fetch = fetch)
         headers: { "x-visitor-token": session.visitorToken },
       });
     },
-    send: async (session, body, attachmentIds) => {
+    send: async (session, body, attachmentIds, actionLabel) => {
       const data = await request<{ message: SupportMessage }>(
         `/api/widget/conversations/${session.conversationId}/messages`,
         {
           method: "POST",
           headers: { "x-visitor-token": session.visitorToken },
-          body: JSON.stringify({ body, ...(attachmentIds?.length ? { attachmentIds } : {}) }),
+          body: JSON.stringify({
+            body,
+            ...(attachmentIds?.length ? { attachmentIds } : {}),
+            ...(actionLabel ? { actionLabel } : {}),
+          }),
         },
       );
       return data.message;

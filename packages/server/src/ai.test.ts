@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildAiMessages, completeOpenAi, isOpenAiModel } from "./ai.js";
+import { buildAiMessages, completeOpenAi, isOpenAiModel, splitAiActions } from "./ai.js";
 import { DEFAULT_AI } from "./settings.js";
 import type { Message } from "./types.js";
 
@@ -34,6 +34,34 @@ test("knowledge becomes the system prompt and only visitor and agent lines are s
     { role: "user", content: "When do you ship?" },
     { role: "assistant", content: "Checking" },
   ]);
+});
+
+test("configured actions are explained in the system prompt", () => {
+  const turns = buildAiMessages(
+    {
+      ...DEFAULT_AI,
+      actions: [
+        { id: 1, label: "Plan", description: "Returns the signed-in visitor's plan and renewal date." },
+        { id: 2, label: "Orders", description: "Returns the visitor's latest order." },
+      ],
+    },
+    [message("visitor", "When does my plan renew?")],
+  );
+  assert.match(turns[0]?.content ?? "", /you must ask for it/);
+  assert.match(turns[0]?.content ?? "", /%%\[id,id\]%%/);
+  assert.match(turns[0]?.content ?? "", /1: Returns the signed-in visitor's plan/);
+  assert.match(turns[0]?.content ?? "", /2: Returns the visitor's latest order/);
+  assert.doesNotMatch(turns[0]?.content ?? "", /^Plan:/m);
+});
+
+test("a trailing action caller is removed and unknown ids are dropped", () => {
+  const actions = [{ id: 1, label: "Plan", description: "Plan details." }];
+  assert.deepEqual(splitAiActions("I need your plan to answer that.\n%%[1, 9]%%", actions), {
+    body: "I need your plan to answer that.",
+    actionIds: [1],
+  });
+  assert.deepEqual(splitAiActions("Ships in 3 days.", actions), { body: "Ships in 3 days.", actionIds: [] });
+  assert.deepEqual(splitAiActions("A discount is %%[1]%% off.", actions), { body: "A discount is %%[1]%% off.", actionIds: [] });
 });
 
 test("an OpenAI error becomes a failed reply", async () => {

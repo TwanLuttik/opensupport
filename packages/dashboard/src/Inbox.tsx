@@ -46,6 +46,7 @@ export function Inbox({ me }: { me: Account | null }) {
 
   const queues = useMemo(() => splitQueues(conversations), [conversations]);
   const needsYou = useMemo(() => groupConversations(queues.needsYou), [queues.needsYou]);
+  const aiChats = useMemo(() => groupConversations(queues.ai), [queues.ai]);
   const openChats = useMemo(() => groupConversations(queues.open), [queues.open]);
   const done = useMemo(() => groupConversations(queues.done), [queues.done]);
 
@@ -190,6 +191,17 @@ export function Inbox({ me }: { me: Account | null }) {
           onVisitor={openVisitor}
         />
         <Queue
+          title="AI"
+          tone="quiet"
+          count={queues.ai.length}
+          groups={aiChats}
+          loaded={loaded}
+          empty="No AI conversations."
+          currentId={current?.id}
+          onOpen={openConversation}
+          onVisitor={openVisitor}
+        />
+        <Queue
           title="Open"
           count={queues.open.length}
           groups={openChats}
@@ -220,7 +232,9 @@ export function Inbox({ me }: { me: Account | null }) {
               {topicLabel(current) ? <span className="badge badge-primary">{topicLabel(current)}</span> : null}
               {current.metadata?.offline === "true" ? <span className="badge badge-outline">Email</span> : null}
               {current.status === "closed" ? <span className="badge badge-outline">Ended</span> : null}
-              {current.assigneeName ? (
+              {current.metadata?.handler === "ai" && !current.assigneeName ? (
+                <span className="badge badge-outline">AI</span>
+              ) : current.assigneeName ? (
                 <span className="badge badge-outline">{current.assigneeName} joined</span>
               ) : current.metadata?.offline === "true" ? (
                 <span className="badge">Needs a reply</span>
@@ -405,17 +419,23 @@ function topicLabel(conversation: Conversation): string {
   return conversation.metadata?.topic?.trim() ?? "";
 }
 
-/** Work waiting on a person comes first. Closed chats sink to the bottom. */
-function splitQueues(conversations: Conversation[]): { needsYou: Conversation[]; open: Conversation[]; done: Conversation[] } {
+function isAiChat(conversation: Conversation): boolean {
+  return conversation.metadata?.handler === "ai" && !conversation.assigneeName;
+}
+
+/** Work waiting on a person comes first. AI chats are their own list. Closed chats sink to the bottom. */
+function splitQueues(conversations: Conversation[]): { needsYou: Conversation[]; ai: Conversation[]; open: Conversation[]; done: Conversation[] } {
   const needsYou: Conversation[] = [];
+  const ai: Conversation[] = [];
   const open: Conversation[] = [];
   const done: Conversation[] = [];
   for (const conversation of conversations) {
     if (conversation.status === "closed") done.push(conversation);
+    else if (isAiChat(conversation)) ai.push(conversation);
     else if (!conversation.assigneeName || conversation.unreadForAgent > 0 || conversation.metadata?.offline === "true") needsYou.push(conversation);
     else open.push(conversation);
   }
-  return { needsYou, open, done };
+  return { needsYou, ai, open, done };
 }
 
 function stayLabel(page: PageVisit, now: number): string {
@@ -494,7 +514,8 @@ function ConversationRow({
   active: boolean;
   onOpen: () => void;
 }) {
-  const waiting = conversation.status !== "closed" && (!conversation.assigneeName || conversation.unreadForAgent > 0 || conversation.metadata?.offline === "true");
+  const ai = isAiChat(conversation);
+  const waiting = !ai && conversation.status !== "closed" && (!conversation.assigneeName || conversation.unreadForAgent > 0 || conversation.metadata?.offline === "true");
   const subject = topicLabel(conversation) || (conversation.metadata?.offline === "true" ? "Left a message" : conversation.metadata?.handler === "ai" ? "AI chat" : "Live chat");
   const when = formatMessageTime(conversation.updatedAt);
   return (
@@ -509,6 +530,8 @@ function ConversationRow({
         {conversation.metadata?.offline === "true" ? <span className="badge">Email</span> : null}
         {conversation.status === "closed" ? (
           <span className="badge badge-outline">Closed</span>
+        ) : ai ? (
+          <span className="badge badge-outline">AI</span>
         ) : conversation.assigneeName ? (
           <span className="badge badge-outline">{conversation.assigneeName}</span>
         ) : (
@@ -525,7 +548,11 @@ function MessageView({ message }: { message: Message }) {
   const files = message.attachments ?? [];
   return (
     <div className={`msg ${message.role}`}>
-      {message.body ? <div className="bubble">{message.agentName ? `${message.agentName}: ` : ""}{message.body}</div> : null}
+      {message.actionLabel ? (
+        <div className="bubble action-note">Provided {message.actionLabel}</div>
+      ) : message.body ? (
+        <div className="bubble">{message.agentName ? `${message.agentName}: ` : ""}{message.body}</div>
+      ) : null}
       {files.map((file) => <FileLink key={file.id} file={file} />)}
       {label ? <time dateTime={message.createdAt}>{label}</time> : null}
     </div>

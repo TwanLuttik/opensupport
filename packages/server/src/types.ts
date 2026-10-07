@@ -17,6 +17,16 @@ export interface Message {
   createdAt: string;
   /** Present when an integration posted the message. */
   agentName?: string;
+  /**
+   * Action ids the AI asked the page to resolve. Present only on that reply.
+   * The `%%[…]%%` marker itself is removed before the body is stored.
+   */
+  actionIds?: number[];
+  /**
+   * Set when the visitor sent this message by pressing an action button.
+   * The body is still the handler text, for the model. The bubble shows this label instead.
+   */
+  actionLabel?: string;
 }
 
 export type ConversationStatus = "open" | "closed";
@@ -202,6 +212,20 @@ export interface OfficeHours {
   closedMessage: string;
 }
 
+/**
+ * A client action the AI can request at the end of a reply.
+ * The number is what the model writes inside `%%[…]%%`. The description is
+ * added to the system prompt so the model knows when to ask for it.
+ */
+export interface AiAction {
+  /** Stable caller id, 1–99. This is the number inside `%%[1,2]%%`. */
+  id: number;
+  /** Short name shown in the dashboard. Not sent to the model. */
+  label: string;
+  /** What this action returns. Ingested into the AI knowledge automatically. */
+  description: string;
+}
+
 /** How the bubble answers on its own. The API key lives in the secrets table, not here. */
 export interface AiSettings {
   /** When true, and a key is saved, visitors can choose the AI instead of a person. */
@@ -212,6 +236,8 @@ export interface AiSettings {
   agentName: string;
   /** Extra knowledge the model should use. Not sent to the public widget config. */
   context: string;
+  /** Client actions the model may request when it needs data from the page. */
+  actions: AiAction[];
   /** When true, each IP address can only ask the AI `rateLimit` times per 10 minutes. */
   rateLimitEnabled: boolean;
   /** AI replies allowed from one IP address per 10 minutes. */
@@ -245,6 +271,7 @@ export interface ServerSettingsView {
     model: string;
     agentName: string;
     context: string;
+    actions: AiAction[];
     hasApiKey: boolean;
     rateLimitEnabled: boolean;
     rateLimit: number;

@@ -65,6 +65,11 @@ export const DASHBOARD_PAGES = [
   "/statistics/general",
   "/hours",
   "/docs",
+  "/docs/desk",
+  "/docs/react",
+  "/docs/api",
+  "/docs/sdk",
+  "/docs/server",
   "/dashboard",
 ];
 
