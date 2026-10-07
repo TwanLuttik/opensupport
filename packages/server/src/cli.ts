@@ -17,3 +17,17 @@ app.server.listen(config.port, config.host, () => {
     console.log("");
   }
 });
+
+function shutdown(signal: string) {
+  console.log(`Received ${signal}, closing.`);
+  app.close().then(
+    () => process.exit(0),
+    (error) => {
+      console.error(error);
+      process.exit(1);
+    },
+  );
+}
+
+process.once("SIGTERM", () => shutdown("SIGTERM"));
+process.once("SIGINT", () => shutdown("SIGINT"));

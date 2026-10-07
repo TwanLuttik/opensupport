@@ -278,8 +278,16 @@ test("dashboard session configures widget, webhooks, and telegram", async () => 
       body: JSON.stringify({ adminKey: "  admin-test-key  " }),
     });
     assert.equal(login.status, 201);
-    const cookie = login.headers.get("set-cookie")?.split(";")[0];
+    const setCookie = login.headers.get("set-cookie") ?? "";
+    const cookie = setCookie.split(";")[0];
     assert.ok(cookie?.startsWith("osb_session="));
+    assert.equal(setCookie.toLowerCase().includes("secure"), false);
+    const secureLogin = await fetch(`${base}/api/dashboard/session`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-forwarded-proto": "https" },
+      body: JSON.stringify({ adminKey: "admin-test-key" }),
+    });
+    assert.match(secureLogin.headers.get("set-cookie") ?? "", /;\s*Secure/i);
 
     const widget = await fetch(`${base}/api/dashboard/widget`, {
       method: "PUT",

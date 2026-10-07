@@ -44,6 +44,24 @@ On first boot without `ADMIN_KEY`, a one-time admin key is printed. Set `ADMIN_K
 | `WIDGET_ACCENT` | `#111827` | Accent color, used by the Ink theme until you save a theme |
 | `WIDGET_GREETING` | `Hi! How can we help?` | First system message |
 | `WIDGET_PLACEHOLDER` | `Write a message…` | Composer placeholder |
+| `COOKIE_SECURE` | from the request | `1` forces the `Secure` session cookie. `0` leaves it off. HTTPS proxies, including Railway, are detected from `X-Forwarded-Proto` |
+
+## Deploy on Railway
+
+One service runs the API and the dashboard. Node 22 is pinned in `nixpacks.toml`. The root `build` script compiles the dashboard before the server, and the start command is `node packages/server/dist/cli.js`. Railway sets `PORT`.
+
+The container disk is wiped on every deploy. Add a volume mounted at `/data`, then set:
+
+| Variable | Value |
+| --- | --- |
+| `DATABASE_PATH` | `/data/support.db` |
+| `UPLOAD_DIR` | `/data/uploads` |
+| `ADMIN_KEY` | a long random secret you keep |
+| `CORS_ORIGIN` | the sites that embed the bubble, comma-separated |
+
+Health check path: `/health`.
+
+Without the volume, conversations, uploads, and sessions disappear on the next deploy. Without `ADMIN_KEY`, the recovery key changes on every restart. The dashboard cookie is marked `Secure` when Railway forwards the request as HTTPS.
 
 ## Dashboard
 
@@ -51,7 +69,7 @@ The inbox is a Vite + React app in `packages/dashboard`. `pnpm build` compiles i
 
 Open `http://localhost:8787/`. The first visit asks you to create an admin account with an email and password. That admin can add more accounts from the **Accounts** tab. Agents can use the inbox. Admins can also change settings and mint API tokens.
 
-The admin key (`ADMIN_KEY`, or the key printed on first boot) still signs in. Use it to recover access. The session is an HttpOnly cookie that lasts 14 days.
+The admin key (`ADMIN_KEY`, or the key printed on first boot) still signs in. Use it to recover access. The session is an HttpOnly cookie that lasts 14 days. It is also marked `Secure` when the request arrived over HTTPS.
 
 - **Inbox** lists every conversation. A new thread says it is waiting for an agent. Open it and click **Assign to me**. The visitor sees "<name> joined the conversation" and the header names the agent. You can also reply or close the thread.
 - **Appearance** edits the title, subtitle, placeholder, greeting, waiting message, and the bubble theme. Pick a template (Ink, Paper, Forest, Ocean, or Dusk) or customize every color. The bubble reads these live. They override `WIDGET_*` once you save.

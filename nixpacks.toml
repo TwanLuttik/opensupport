@@ -1,0 +1,12 @@
+# Railway / Nixpacks. Node 22 is required for the built-in node:sqlite module.
+# The root build compiles the dashboard first, then the server copies it in.
+
+[variables]
+NIXPACKS_NODE_VERSION = "22"
+
+[phases.setup]
+nixpkgsArchive = "51ad83807a7a486b8151cd5656781b96eef319a1"
+aptPkgs = ["nodejs_22"]
+
+[start]
+cmd = "node packages/server/dist/cli.js"

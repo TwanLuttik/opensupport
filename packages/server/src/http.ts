@@ -289,13 +289,10 @@ export function createApp(config: ServerConfig): SupportApp {
     return false;
   }
 
-  function signIn(res: ServerResponse, accountId: string | null): void {
+  function signIn(req: IncomingMessage, res: ServerResponse, accountId: string | null): void {
     const token = newSecret(32);
     store.createDashboardSession(token, SESSION_TTL_MS, accountId);
-    res.setHeader(
-      "set-cookie",
-      `${SESSION_COOKIE}=${encodeURIComponent(token)}; HttpOnly; Path=/; Max-Age=${SESSION_TTL_MS / 1000}; SameSite=Lax`,
-    );
+    res.setHeader("set-cookie", sessionCookie(req, `${SESSION_COOKIE}=${encodeURIComponent(token)}`, SESSION_TTL_MS / 1000));
   }
 
   function publicAccount(account: Account) {
@@ -823,12 +820,12 @@ export function createApp(config: ServerConfig): SupportApp {
             send(res, 401, { error: "Wrong email or password" });
             return;
           }
-          signIn(res, account.id);
+          signIn(req, res, account.id);
           send(res, 201, { ok: true, account: publicAccount(account) });
           return;
         }
         if (body.adminKey && keysMatch(body.adminKey.trim(), adminKey)) {
-          signIn(res, null);
+          signIn(req, res, null);
           send(res, 201, { ok: true, account: null });
           return;
         }
@@ -839,7 +836,7 @@ export function createApp(config: ServerConfig): SupportApp {
       if (path === "/api/dashboard/session" && req.method === "DELETE") {
         const token = readCookie(req, SESSION_COOKIE);
         if (token) store.deleteDashboardSession(token);
-        res.setHeader("set-cookie", `${SESSION_COOKIE}=; HttpOnly; Path=/; Max-Age=0; SameSite=Lax`);
+        res.setHeader("set-cookie", sessionCookie(req, `${SESSION_COOKIE}=`, 0));
         send(res, 200, { ok: true });
         return;
       }
@@ -878,7 +875,7 @@ export function createApp(config: ServerConfig): SupportApp {
         }
         const body = await readJson(req, setupSchema);
         const account = store.createAccount({ ...body, role: "admin" });
-        signIn(res, account.id);
+        signIn(req, res, account.id);
         send(res, 201, { account: publicAccount(account) });
         return;
       }
@@ -1438,6 +1435,20 @@ export function createApp(config: ServerConfig): SupportApp {
         });
       }),
   };
+}
+
+/** Secure when the public URL is HTTPS, including Railway's proxy. Local HTTP stays unsigned so the desk still signs in. */
+function cookieSecure(req: IncomingMessage): boolean {
+  if (process.env.COOKIE_SECURE === "1") return true;
+  if (process.env.COOKIE_SECURE === "0") return false;
+  const forwarded = req.headers["x-forwarded-proto"];
+  const proto = (Array.isArray(forwarded) ? forwarded[0] : forwarded)?.split(",")[0]?.trim();
+  return proto === "https";
+}
+
+function sessionCookie(req: IncomingMessage, assignment: string, maxAge: number): string {
+  const secure = cookieSecure(req) ? "; Secure" : "";
+  return `${assignment}; HttpOnly; Path=/; Max-Age=${maxAge}; SameSite=Lax${secure}`;
 }
 
 function keysMatch(presented: string | undefined, expected: string): boolean {
