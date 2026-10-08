@@ -31,6 +31,8 @@ export interface WidgetClient {
   rate(session: StoredSession, rating: "up" | "down" | "skipped", comment?: string): Promise<SupportConversation>;
   /** Tells the server which page the visitor is on. A new path closes the previous one. */
   reportPage(session: StoredSession, path: string): Promise<void>;
+  /** Marks agent replies as read up to now. Returns the stored cursor. */
+  markRead(session: StoredSession): Promise<string | null>;
   upload(
     session: StoredSession,
     file: { name: string; type: string; bytes: Blob | Uint8Array },
@@ -124,6 +126,17 @@ export function createClient(serverUrl: string, fetchImpl: typeof fetch = fetch)
         headers: { "x-visitor-token": session.visitorToken },
         body: JSON.stringify({ path }),
       }),
+    markRead: async (session) => {
+      const data = await request<{ readAt: string | null }>(
+        `/api/widget/conversations/${session.conversationId}/read`,
+        {
+          method: "POST",
+          headers: { "x-visitor-token": session.visitorToken },
+          body: "{}",
+        },
+      );
+      return data.readAt;
+    },
     upload: (session, file, onProgress) =>
       uploadChunked(fetchImpl, base, {
         path: `/api/widget/conversations/${session.conversationId}/uploads`,

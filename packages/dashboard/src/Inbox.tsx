@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { File, FileArchive, FileAudio, FileCode, FileImage, FileText, FileVideo } from "lucide-react";
 import { api } from "./api.js";
 import { formatMessageTime } from "./format.js";
+import { connectDesk, sendDeskTyping } from "./live.js";
 import type { Account, Attachment, Conversation, Message, PageVisit, VisitorCard } from "./types.js";
 
 const UPLOAD_CHUNK_BYTES = 5 * 1024 * 1024;
@@ -43,6 +44,11 @@ export function Inbox({ me }: { me: Account | null }) {
   const [confirmEnd, setConfirmEnd] = useState(false);
   const [pages, setPages] = useState<PageVisit[]>([]);
   const [now, setNow] = useState(() => Date.now());
+  const [visitorTyping, setVisitorTyping] = useState(false);
+  const socketRef = useRef<WebSocket | null>(null);
+  const typingStop = useRef(0);
+  const currentId = useRef<string | null>(null);
+  currentId.current = current?.id ?? null;
 
   const queues = useMemo(() => splitQueues(conversations), [conversations]);
   const needsYou = useMemo(() => groupConversations(queues.needsYou), [queues.needsYou]);
@@ -91,20 +97,47 @@ export function Inbox({ me }: { me: Account | null }) {
 
   useEffect(() => {
     loadList().catch(() => setLoaded(true));
-    const timer = setInterval(() => {
-      loadList().catch(() => {});
-      setNow(Date.now());
+    const clock = setInterval(() => setNow(Date.now()), 1000);
+    const stop = connectDesk((event) => {
+      if (event.type === "pages") {
+        setCurrent((open) => {
+          if (open?.id === event.conversationId) setPages(event.pages);
+          return open;
+        });
+        return;
+      }
+      if (event.type === "typing") {
+        if (event.role !== "visitor") return;
+        setVisitorTyping(event.conversationId === currentId.current && event.typing);
+        return;
+      }
+      if (event.type === "read") {
+        if (event.role !== "visitor") return;
+        setCurrent((open) => (open && open.id === event.conversationId ? { ...open, visitorReadAt: event.readAt } : open));
+        return;
+      }
+      const conversation = event.conversation;
+      setConversations((current) => upsertConversation(current, conversation));
+      setLoaded(true);
+      if (event.type !== "message") return;
+      if (conversation.id === currentId.current) setVisitorTyping(false);
       setCurrent((open) => {
-        if (!open) return open;
-        api<{ conversation: Conversation }>(`/api/conversations/${open.id}`)
-          .then((fresh) => setCurrent(fresh.conversation))
-          .catch(() => {});
-        loadPages(open.id).catch(() => {});
-        return open;
+        if (!open || open.id !== conversation.id) return open;
+        const messages = mergeMessages(open.messages ?? [], [event.message]);
+        return { ...conversation, messages };
       });
-    }, 4000);
-    return () => clearInterval(timer);
+    }, socketRef);
+    return () => {
+      clearInterval(clock);
+      stop();
+    };
   }, []);
+
+  useEffect(() => {
+    setVisitorTyping(false);
+    window.clearTimeout(typingStop.current);
+    sendDeskTyping(socketRef.current, current?.id ?? "", false);
+  }, [current?.id]);
 
   async function assign() {
     if (!current) return;
@@ -322,10 +355,19 @@ export function Inbox({ me }: { me: Account | null }) {
         {current && pages.length > 0 ? <PageTrail pages={pages} now={now} /> : null}
         <div id="messages">
           {current?.messages?.length ? (
-            current.messages.map((message) => <MessageView key={message.id} message={message} />)
+            current.messages.map((message, index) => (
+              <MessageView
+                key={message.id}
+                message={message}
+                readAt={receiptFor(message, current.messages?.[index + 1], current.visitorReadAt)}
+              />
+            ))
           ) : (
             <p className="muted" style={{ padding: 8 }}>Select a conversation.</p>
           )}
+          {visitorTyping && current && current.status !== "closed" ? (
+            <p className="typing" role="status">{current.visitorName || "Visitor"} is typing…</p>
+          ) : null}
         </div>
         <form className="composer" onSubmit={send}>
           {current?.status === "closed" ? <p className="muted">This conversation has ended. The visitor can no longer reply.</p> : null}
@@ -361,7 +403,20 @@ export function Inbox({ me }: { me: Account | null }) {
               placeholder={current?.status === "closed" ? "This conversation has ended" : "Reply as an agent…"}
               value={reply}
               disabled={sending || current?.status === "closed"}
-              onChange={(event) => setReply(event.target.value)}
+              onChange={(event) => {
+                const value = event.target.value;
+                setReply(value);
+                const id = current?.id;
+                if (!id || current?.status === "closed") return;
+                if (!value.trim()) {
+                  window.clearTimeout(typingStop.current);
+                  sendDeskTyping(socketRef.current, id, false);
+                  return;
+                }
+                sendDeskTyping(socketRef.current, id, true);
+                window.clearTimeout(typingStop.current);
+                typingStop.current = window.setTimeout(() => sendDeskTyping(socketRef.current, id, false), 3000);
+              }}
               onKeyDown={(event) => {
                 if (event.key === "Enter" && !event.shiftKey) {
                   event.preventDefault();
@@ -413,6 +468,20 @@ function pagePath(path: string): string {
   } catch {
     return clean;
   }
+}
+
+function upsertConversation(current: Conversation[], next: Conversation): Conversation[] {
+  const index = current.findIndex((conversation) => conversation.id === next.id);
+  if (index === -1) return [next, ...current];
+  const copy = current.slice();
+  copy[index] = { ...copy[index], ...next, messages: copy[index]?.messages };
+  return copy;
+}
+
+function mergeMessages(current: Message[], incoming: Message[]): Message[] {
+  const byId = new Map(current.map((message) => [message.id, message]));
+  for (const message of incoming) byId.set(message.id, message);
+  return [...byId.values()].sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
 }
 
 function topicLabel(conversation: Conversation): string {
@@ -543,7 +612,13 @@ function ConversationRow({
   );
 }
 
-function MessageView({ message }: { message: Message }) {
+function receiptFor(message: Message, next: Message | undefined, visitorReadAt: string | null | undefined): string | null {
+  if (message.role !== "agent" || !visitorReadAt || message.createdAt > visitorReadAt) return null;
+  if (next?.role === "agent" && next.createdAt <= visitorReadAt) return null;
+  return visitorReadAt;
+}
+
+function MessageView({ message, readAt = null }: { message: Message; readAt?: string | null }) {
   const label = formatMessageTime(message.createdAt);
   const files = message.attachments ?? [];
   return (
@@ -554,7 +629,12 @@ function MessageView({ message }: { message: Message }) {
         <div className="bubble">{message.agentName ? `${message.agentName}: ` : ""}{message.body}</div>
       ) : null}
       {files.map((file) => <FileLink key={file.id} file={file} />)}
-      {label ? <time dateTime={message.createdAt}>{label}</time> : null}
+      {label ? (
+        <time dateTime={message.createdAt}>
+          {label}
+          {readAt ? <span className="read-mark">Read</span> : null}
+        </time>
+      ) : null}
     </div>
   );
 }

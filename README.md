@@ -156,6 +156,8 @@ Visitor endpoints (used by the widget, authorized with `X-Visitor-Token`):
 | `GET` | `/api/widget/config` | Public copy, colors, and configured AI action ids |
 | `POST` | `/api/widget/conversations` | Start a thread, returns `visitorToken` once. `handler: "ai"` starts an AI chat |
 | `GET` | `/api/widget/conversations/:id?after=` | Poll the thread |
+| `POST` | `/api/widget/conversations/:id/read` | Mark agent replies as read |
+| `GET` | `/api/widget/live` | Websocket. Pushes messages, read receipts, and typing |
 | `POST` | `/api/widget/conversations/:id/messages` | Visitor message |
 | `POST` | `/api/widget/conversations/:id/ai` | Ask the model to answer the latest visitor message |
 
@@ -192,7 +194,7 @@ export function App() {
 }
 ```
 
-The bubble is `position: fixed` at the bottom-left. The visitor token is kept in `localStorage` so a refresh resumes the same conversation. The panel polls for agent replies.
+The bubble is `position: fixed` at the bottom-left. The visitor token is kept in `localStorage` so a refresh resumes the same conversation. An open conversation uses a websocket for replies, read receipts, and typing, and falls back to polling if that connection drops.
 
 `identifier` is your own stable id for the signed-in person. Every conversation started with the same value is grouped under that visitor in the dashboard, where a click opens their card. Leave it off for anonymous visitors. A new conversation still starts a new thread. The identifier only groups them.
 

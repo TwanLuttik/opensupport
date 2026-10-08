@@ -15,6 +15,8 @@ export interface SupportMessage {
   body: string;
   attachments: Attachment[];
   createdAt: string;
+  /** Set once an agent has read this message. Absent until then. */
+  readAt?: string;
   agentName?: string;
   /** Action ids requested at the end of an AI reply. Empty when the model did not ask. */
   actionIds?: number[];
@@ -39,6 +41,10 @@ export interface SupportConversation {
   assignedAt?: string | null;
   /** Set after the visitor rates a closed chat, or skips the question. */
   rating?: "up" | "down" | "skipped" | null;
+  /** How far the visitor has read. Present on threads loaded from the server. */
+  visitorReadAt?: string | null;
+  /** How far an agent has read. A visitor message at or before this time is seen. */
+  agentReadAt?: string | null;
   /** `handler` is `ai` when the visitor chose the model instead of a person. */
   metadata?: Record<string, string>;
   createdAt: string;
@@ -163,7 +169,11 @@ export interface SupportBubbleProps {
     email?: string;
     metadata?: Record<string, string>;
   };
-  /** Poll interval in milliseconds. Defaults to 3000. */
+  /**
+   * How often to check for replies after the live connection gives up.
+   * An open conversation uses a websocket first and retries three times.
+   * Defaults to 3000.
+   */
   pollIntervalMs?: number;
   /** Called when the panel opens or closes. */
   onOpenChange?: (open: boolean) => void;

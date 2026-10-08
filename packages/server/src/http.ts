@@ -1,4 +1,5 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import type { Duplex } from "node:stream";
 import { mkdirSync } from "node:fs";
 import { z } from "zod";
 import type { ServerConfig } from "./config.js";
@@ -11,6 +12,8 @@ import { aiActionSchema, hoursSchema, isOpenNow, normalizeWidget, settingsSchema
 import { DASHBOARD_PAGES, dashboardFile, dashboardMissingHtml } from "./dashboard.js";
 import type { Account, Attachment, ServerSettings, WebhookEndpoint, WebhookEvent } from "./types.js";
 import { prepareImageUpload, prepareUpload, readBody, serveUpload, UploadStore, UPLOAD_CHUNK_BYTES } from "./uploads.js";
+import { acceptWebSocket, LiveHub, type LiveEvent } from "./live.js";
+import type { WebSocket } from "ws";
 
 const MAX_BODY = 1024 * 1024;
 
@@ -241,6 +244,7 @@ export function createApp(config: ServerConfig): SupportApp {
   const uploads = new UploadStore(config.uploadDir);
   const pendingAttachments = new Map<string, { conversationId: string; attachment: Attachment }>();
   const aiLimits = new SlidingWindow();
+  const live = new LiveHub();
 
   let generatedAdminKey: string | undefined;
   const adminKey = config.adminKey ?? (generatedAdminKey = newSecret(24));
@@ -346,6 +350,67 @@ export function createApp(config: ServerConfig): SupportApp {
       agentName: settings.ai.agentName,
       actions: normalizeAiActions(settings.ai.actions).map((action) => action.id),
     };
+  }
+
+  function publish(event: LiveEvent): void {
+    live.publish(event);
+  }
+
+  function publishConversation(id: string): void {
+    const conversation = store.getConversation(id);
+    if (conversation) publish({ type: "conversation", conversation });
+  }
+
+  function publishMessage(conversationId: string, messageId: string): void {
+    const conversation = store.getConversation(conversationId);
+    const message = store.listMessages(conversationId).messages.find((item) => item.id === messageId);
+    if (conversation && message) publish({ type: "message", conversation, message });
+  }
+
+  function publishRead(conversationId: string, role: "visitor" | "agent"): void {
+    const conversation = store.getConversation(conversationId);
+    const readAt = role === "visitor" ? conversation?.visitorReadAt : conversation?.agentReadAt;
+    if (!conversation || !readAt) return;
+    publish({ type: "read", conversationId, role, readAt });
+  }
+
+  const TYPING_IDLE_MS = 3000;
+
+  /** Forwards composer activity. A quiet socket is treated as stopped typing. */
+  function wireTyping(socket: WebSocket, role: "visitor" | "agent", onlyConversationId?: string, name?: string): void {
+    let active = false;
+    let conversationId = onlyConversationId;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const stop = () => {
+      if (!active || !conversationId) return;
+      active = false;
+      live.publish({ type: "typing", conversationId, role, ...(name ? { name } : {}), typing: false });
+    };
+    socket.on("message", (data) => {
+      let parsed: { type?: string; typing?: boolean; conversationId?: string };
+      try {
+        parsed = JSON.parse(String(data)) as { type?: string; typing?: boolean; conversationId?: string };
+      } catch {
+        return;
+      }
+      if (parsed.type !== "typing" || typeof parsed.typing !== "boolean") return;
+      const target = onlyConversationId ?? (typeof parsed.conversationId === "string" ? parsed.conversationId : "");
+      if (!target || !store.getConversation(target)) return;
+      if (conversationId && conversationId !== target) stop();
+      conversationId = target;
+      if (timer) clearTimeout(timer);
+      if (!parsed.typing) {
+        stop();
+        return;
+      }
+      active = true;
+      live.publish({ type: "typing", conversationId, role, ...(name ? { name } : {}), typing: true });
+      timer = setTimeout(stop, TYPING_IDLE_MS);
+    });
+    socket.on("close", () => {
+      if (timer) clearTimeout(timer);
+      stop();
+    });
   }
 
   function emit(type: WebhookEvent, conversationId: string, messageId?: string): void {
@@ -556,6 +621,7 @@ export function createApp(config: ServerConfig): SupportApp {
         );
         if (offline) store.updateConversation(created.conversation.id, { status: "closed" });
         emit("conversation.created", created.conversation.id, messages[0]?.id);
+        publishConversation(created.conversation.id);
         send(res, 201, {
           conversation: store.getConversation(created.conversation.id),
           visitorToken: created.visitorToken,
@@ -582,6 +648,7 @@ export function createApp(config: ServerConfig): SupportApp {
             actionLabel: body.actionLabel,
           });
           emit("message.created", conversation.id, message.id);
+          publishMessage(conversation.id, message.id);
           send(res, 201, { message });
         } catch (error) {
           const message = error instanceof Error ? error.message : "Unable to post message";
@@ -659,6 +726,7 @@ export function createApp(config: ServerConfig): SupportApp {
             promptTokens: reply.promptTokens ?? 0,
             completionTokens: reply.completionTokens ?? 0,
           });
+          publishMessage(conversation.id, message.id);
           send(res, 201, { message });
         } catch (error) {
           const message = error instanceof Error ? error.message : "The AI agent could not reply";
@@ -674,6 +742,7 @@ export function createApp(config: ServerConfig): SupportApp {
         if (!conversation) return;
         const body = await readJson(req, z.object({ status: z.literal("closed") }));
         const updated = store.updateConversation(conversation.id, { status: body.status });
+        if (updated) publishConversation(updated.id);
         send(res, 200, { conversation: updated });
         return;
       }
@@ -723,6 +792,7 @@ export function createApp(config: ServerConfig): SupportApp {
         if (!conversation) return;
         const body = await readJson(req, z.object({ path: z.string().trim().min(1).max(300) }));
         const pages = store.recordPage(conversation.id, body.path);
+        publish({ type: "pages", conversationId: conversation.id, pages });
         send(res, 200, { pages });
         return;
       }
@@ -736,6 +806,16 @@ export function createApp(config: ServerConfig): SupportApp {
           return;
         }
         send(res, 200, { pages: store.listPages(pageConversationId) });
+        return;
+      }
+
+      const widgetRead = /^\/api\/widget\/conversations\/([^/]+)\/read$/.exec(path);
+      if (widgetRead && req.method === "POST") {
+        const conversation = authorizeVisitor(store, widgetRead[1]!, visitorToken(req), res);
+        if (!conversation) return;
+        const updated = store.markReadAt(conversation.id, "visitor");
+        if (updated && updated.visitorReadAt !== conversation.visitorReadAt) publishRead(updated.id, "visitor");
+        send(res, 200, { conversation: updated, readAt: updated?.visitorReadAt ?? null });
         return;
       }
 
@@ -1119,6 +1199,8 @@ export function createApp(config: ServerConfig): SupportApp {
                 rating: null,
                 ratingComment: null,
                 ratedAt: null,
+                visitorReadAt: null,
+                agentReadAt: null,
                 metadata: {},
                 unreadForAgent: 0,
                 seq: 0,
@@ -1304,6 +1386,7 @@ export function createApp(config: ServerConfig): SupportApp {
               visitorEmail: body.visitorEmail,
             });
           }
+          publishConversation(conversationId);
           send(res, 200, { conversation: store.getConversationWithMessages(conversationId) });
           return;
         }
@@ -1312,6 +1395,7 @@ export function createApp(config: ServerConfig): SupportApp {
           send(res, 404, { error: "Conversation not found" });
           return;
         }
+        publishConversation(updated.id);
         send(res, 200, { conversation: updated });
         return;
       }
@@ -1340,6 +1424,7 @@ export function createApp(config: ServerConfig): SupportApp {
           send(res, 404, { error: "Conversation not found" });
           return;
         }
+        publishConversation(updated.id);
         send(res, 200, { conversation: store.getConversationWithMessages(updated.id) });
         return;
       }
@@ -1352,11 +1437,12 @@ export function createApp(config: ServerConfig): SupportApp {
           send(res, 404, { error: "Conversation not found" });
           return;
         }
-        const updated = store.markRead(readConversationId);
+        const updated = store.markReadAt(readConversationId, "agent");
         if (!updated) {
           send(res, 404, { error: "Conversation not found" });
           return;
         }
+        publishRead(updated.id, "agent");
         send(res, 200, { conversation: updated });
         return;
       }
@@ -1377,6 +1463,7 @@ export function createApp(config: ServerConfig): SupportApp {
             agentName: body.agentName,
             attachments: takeAttachments(pendingAttachments, conversationId, body.attachmentIds),
           });
+          publishMessage(conversationId, message.id);
           send(res, 201, { message });
         } catch (error) {
           const message = error instanceof Error ? error.message : "Unable to post message";
@@ -1437,6 +1524,43 @@ export function createApp(config: ServerConfig): SupportApp {
       send(res, statusCode, { error: statusCode >= 500 ? "Internal error" : message });
     }
   });
+
+  server.on("upgrade", (req: IncomingMessage, socket: Duplex, head: Buffer) => void (async () => {
+    const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
+    const path = url.pathname.replace(/\/+$/, "") || "/";
+    if (path === "/api/widget/live") {
+      const token = url.searchParams.get("token") ?? "";
+      const conversationId = url.searchParams.get("conversation") ?? "";
+      const conversation = token ? store.getConversationByVisitorToken(token) : null;
+      if (!conversation || conversation.id !== conversationId) {
+        socket.write("HTTP/1.1 401 Unauthorized\r\nConnection: close\r\nContent-Length: 0\r\n\r\n");
+        socket.destroy();
+        return;
+      }
+      const accepted = await acceptWebSocket(req, socket, head);
+      const remove = live.add(accepted, "visitor", conversation.id);
+      wireTyping(accepted, "visitor", conversation.id);
+      accepted.on("close", remove);
+      return;
+    }
+    if (path === "/api/dashboard/live") {
+      const session = readCookie(req, SESSION_COOKIE);
+      if (!session || !store.dashboardSessionValid(session)) {
+        socket.write("HTTP/1.1 401 Unauthorized\r\nConnection: close\r\nContent-Length: 0\r\n\r\n");
+        socket.destroy();
+        return;
+      }
+      const accepted = await acceptWebSocket(req, socket, head);
+      const accountId = store.dashboardAccountId(session);
+      const account = accountId ? store.getAccount(accountId) : null;
+      const remove = live.add(accepted, "desk");
+      wireTyping(accepted, "agent", undefined, account?.name);
+      accepted.on("close", remove);
+      return;
+    }
+    socket.write("HTTP/1.1 404 Not Found\r\nConnection: close\r\nContent-Length: 0\r\n\r\n");
+    socket.destroy();
+  })().catch(() => socket.destroy()));
 
   return {
     server,

@@ -16,6 +16,8 @@ export interface Message {
   body: string;
   attachments: Attachment[];
   createdAt: string;
+  /** Set once the visitor has read this agent message. Absent on visitor messages. */
+  readAt?: string;
   agentName?: string;
 }
 
@@ -44,6 +46,10 @@ export interface Conversation {
   rating: "up" | "down" | "skipped" | null;
   ratingComment: string | null;
   ratedAt: string | null;
+  /** How far the visitor has read. Null until they open the thread. */
+  visitorReadAt: string | null;
+  /** How far an agent has read. Null until the desk opens the thread. */
+  agentReadAt: string | null;
 }
 
 export interface Page<T> {

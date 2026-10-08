@@ -4,6 +4,7 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState, type Animatio
 import { Camera, File, FileArchive, FileAudio, FileCode, FileImage, FileText, FileVideo, ThumbsDown, ThumbsUp } from "lucide-react";
 import { capturePage } from "./screenshot.js";
 import { clearStoredSession, createClient, loadStoredSession, saveStoredSession } from "./client.js";
+import { BUBBLE_RECONNECTS, connectLive, sendTyping, widgetSocketUrl } from "./live.js";
 import type { AiActionHandler, Attachment, PublicConfig, StoredSession, SupportBubbleProps, SupportConversation, SupportMessage } from "./types.js";
 import { UPLOAD_MAX_BYTES } from "./client.js";
 
@@ -156,6 +157,12 @@ export function SupportBubble({
   const seenAgentIds = useRef(new Set<string>());
   const openRef = useRef(open);
   openRef.current = open;
+  const socketRef = useRef<WebSocket | null>(null);
+  const [live, setLive] = useState<"connecting" | "open" | "polling">("connecting");
+  const [conversationId, setConversationId] = useState<string | null>(null);
+  const [peerTyping, setPeerTyping] = useState(false);
+  const [agentReadAt, setAgentReadAt] = useState<string | null>(null);
+  const typingStop = useRef(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -199,6 +206,7 @@ export function SupportBubble({
     setAssigneeName(conversation.assigneeName ?? null);
     setAssigneeAvatar(conversation.assigneeAvatarUrl ?? null);
     setRating(conversation.rating ?? null);
+    if (conversation.agentReadAt) setAgentReadAt(conversation.agentReadAt);
     if (conversation.metadata?.handler === "ai") setWithAi(true);
   }, []);
 
@@ -221,6 +229,7 @@ export function SupportBubble({
     setMessages(thread.messages);
     noteAgents(thread.messages, false);
     applyConversation(thread.conversation);
+    setConversationId(thread.conversation.id);
     setReady(true);
   }, [applyConversation, client, noteAgents]);
 
@@ -258,7 +267,45 @@ export function SupportBubble({
   }, [client, closed, hasSession]);
 
   useEffect(() => {
-    if (!hasSession || !sessionRef.current) return;
+    const session = sessionRef.current;
+    if (!hasSession || !session || closed || typeof window === "undefined" || typeof WebSocket === "undefined") {
+      setLive("polling");
+      return;
+    }
+    setLive("connecting");
+    return connectLive({
+      url: widgetSocketUrl(serverUrl, session),
+      retries: BUBBLE_RECONNECTS,
+      socketRef,
+      onStatus: (status) => {
+        setLive(status === "failed" ? "polling" : status === "open" ? "open" : "connecting");
+        if (status !== "open") setPeerTyping(false);
+      },
+      onEvent: (event) => {
+        const data = event as {
+          type?: string;
+          message?: SupportMessage;
+          conversation?: SupportConversation;
+          role?: string;
+          readAt?: string;
+          typing?: boolean;
+        };
+        if (data.conversation && data.conversation.id === session.conversationId) applyConversation(data.conversation);
+        if (data.type === "message" && data.message && data.message.conversationId === session.conversationId) {
+          noteAgents([data.message], true);
+          setMessages((current) => mergeMessages(current, [data.message!]));
+          setPeerTyping(false);
+        }
+        if (data.type === "read" && data.role === "agent" && data.readAt) {
+          setAgentReadAt((current) => (current && current > data.readAt! ? current : data.readAt!));
+        }
+        if (data.type === "typing" && data.role === "agent") setPeerTyping(Boolean(data.typing));
+      },
+    });
+  }, [applyConversation, closed, conversationId, hasSession, noteAgents, serverUrl]);
+
+  useEffect(() => {
+    if (!hasSession || closed || live !== "polling") return;
     const timer = window.setInterval(() => {
       const session = sessionRef.current;
       if (!session) return;
@@ -275,7 +322,7 @@ export function SupportBubble({
         .catch(() => undefined);
     }, pollIntervalMs);
     return () => window.clearInterval(timer);
-  }, [applyConversation, client, hasSession, messages, noteAgents, pollIntervalMs]);
+  }, [applyConversation, client, closed, hasSession, live, messages, noteAgents, pollIntervalMs]);
 
   useEffect(() => {
     if (!confirmEnd) return;
@@ -290,7 +337,24 @@ export function SupportBubble({
     if (!open) return;
     setUnseen(0);
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight });
-  }, [messages, open]);
+  }, [messages, open, peerTyping]);
+
+  useEffect(() => {
+    if (!open || !hasSession || closed) return;
+    const session = sessionRef.current;
+    if (!session || !messages.some((message) => message.role === "agent")) return;
+    const timer = window.setTimeout(() => {
+      client.markRead(session).catch(() => undefined);
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [client, closed, hasSession, messages, open]);
+
+  useEffect(() => {
+    if (!open || !hasSession || closed || sending) {
+      window.clearTimeout(typingStop.current);
+      sendTyping(socketRef.current, false);
+    }
+  }, [closed, hasSession, open, sending]);
 
   useEffect(() => {
     const field = inputRef.current;
@@ -314,6 +378,7 @@ export function SupportBubble({
   function forgetConversation() {
     sessionRef.current = null;
     setHasSession(false);
+    setConversationId(null);
     setMessages([]);
     setAgentName(null);
     setAssigneeName(null);
@@ -332,6 +397,10 @@ export function SupportBubble({
     setPendingFile(null);
     setUploadProgress(null);
     setDragOver(false);
+    setPeerTyping(false);
+    setAgentReadAt(null);
+    window.clearTimeout(typingStop.current);
+    sendTyping(socketRef.current, false);
     clearStoredSession(serverUrl);
   }
 
@@ -388,6 +457,7 @@ export function SupportBubble({
       setMessages(started.messages);
       noteAgents(started.messages, false);
       applyConversation(started.conversation);
+      setConversationId(started.conversation.id);
       setWithAi(handler === "ai" && !away);
       if (away) {
         setOfflineSent(true);
@@ -572,24 +642,28 @@ export function SupportBubble({
     "--osb-line": mix(colors.ink, 0.12),
   } as CSSProperties;
   const logoUrl = config.logoUrl ? absoluteUrl(serverUrl, config.logoUrl) : "";
-  const agentPhoto = assigneeAvatar ? absoluteUrl(serverUrl, assigneeAvatar) : "";
   const started = hasSession;
   const waiting = started && !closed && !assigneeName && !withAi;
   const showTranscript = started && !closed;
   const aiLabel = config.ai?.agentName?.trim() || agentName || "AI assistant";
   const isLive = !config.officeHours?.enabled || config.officeHours.open;
   const peopleHere = staffOnline && isLive;
-  const subtitle = assigneeName
-    ? `${assigneeName} joined the conversation`
-    : withAi
-      ? `${aiLabel} is answering`
-      : waiting
-        ? config.waitingMessage
-        : agentName
-          ? `${agentName} is handling this`
-          : peopleHere
-            ? "We're online"
-            : "We're away";
+  // A closed chat is over, so the header goes back to the desk instead of the agent who joined.
+  const activeAgent = !closed && assigneeName ? assigneeName : null;
+  const agentPhoto = activeAgent && assigneeAvatar ? absoluteUrl(serverUrl, assigneeAvatar) : "";
+  const subtitle = closed
+    ? "This conversation has ended"
+    : activeAgent
+      ? `${activeAgent} joined the conversation`
+      : withAi
+        ? `${aiLabel} is answering`
+        : waiting
+          ? config.waitingMessage
+          : agentName
+            ? `${agentName} is handling this`
+            : peopleHere
+              ? "We're online"
+              : "We're away";
   const aiOffered = Boolean(config.ai?.enabled);
   const showForm = !started && (isLive || aiOffered) && config.formEnabled && config.formFields.length > 0;
 
@@ -611,7 +685,7 @@ export function SupportBubble({
           <header className="osb-header">
             <div className="osb-brand">
               <span className="osb-avatar" aria-hidden="true">
-                {assigneeName && agentPhoto ? (
+                {agentPhoto ? (
                   <img src={agentPhoto} alt="" />
                 ) : logoUrl ? (
                   <img src={logoUrl} alt="" />
@@ -622,7 +696,7 @@ export function SupportBubble({
               <div className="osb-heading">
                 <h2 id={titleId}>{config.title}</h2>
                 <p className="osb-status">
-                  <span className={peopleHere ? "osb-status-dot is-online" : "osb-status-dot"} aria-hidden="true" />
+                  <span className={!closed && peopleHere ? "osb-status-dot is-online" : "osb-status-dot"} aria-hidden="true" />
                   <span>{subtitle}</span>
                 </p>
               </div>
@@ -787,6 +861,7 @@ export function SupportBubble({
                     next={messages[index + 1]}
                     serverUrl={serverUrl}
                     assigneeName={assigneeName}
+                    readAt={receiptFor(message, messages[index + 1], agentReadAt)}
                     actions={withAi && !closed && index === messages.length - 1 ? actionsForMessage(message, actions) : []}
                     actionBusy={actionBusy}
                     disabled={sending || closed}
@@ -801,7 +876,7 @@ export function SupportBubble({
                 {config.responseTime?.label ? <span className="osb-response">{config.responseTime.label}</span> : null}
               </p>
             ) : null}
-            {aiThinking ? <TypingIndicator name={aiLabel} /> : null}
+            {aiThinking ? <TypingIndicator name={aiLabel} /> : peerTyping ? <TypingIndicator name={assigneeName || agentName || "Support"} /> : null}
             {showTranscript && error ? <p className="osb-error">{error}</p> : null}
             {dragOver ? <p className="osb-drop">Drop to attach</p> : null}
             {closed ? (
@@ -898,7 +973,18 @@ export function SupportBubble({
                 placeholder={closed ? "This conversation is closed" : config.placeholder}
                 rows={1}
                 disabled={closed || sending}
-                onChange={(event) => setDraft(event.target.value)}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  setDraft(value);
+                  if (!value.trim()) {
+                    window.clearTimeout(typingStop.current);
+                    sendTyping(socketRef.current, false);
+                    return;
+                  }
+                  sendTyping(socketRef.current, true);
+                  window.clearTimeout(typingStop.current);
+                  typingStop.current = window.setTimeout(() => sendTyping(socketRef.current, false), 3000);
+                }}
                 onKeyDown={(event) => {
                   if (event.key === "Enter" && !event.shiftKey) {
                     event.preventDefault();
@@ -1240,6 +1326,13 @@ function TypingIndicator({ name }: { name: string }) {
   );
 }
 
+/** The latest visitor message shows when an agent has read up to it. */
+function receiptFor(message: SupportMessage, next: SupportMessage | undefined, agentReadAt: string | null): string | null {
+  if (message.role !== "visitor" || !agentReadAt || message.createdAt > agentReadAt) return null;
+  if (next?.role === "visitor" && next.createdAt <= agentReadAt) return null;
+  return message.readAt && message.readAt > agentReadAt ? message.readAt : agentReadAt;
+}
+
 function actionsForMessage(message: SupportMessage, actions: AiActionHandler[]): AiActionHandler[] {
   const ids = message.actionIds ?? [];
   if (message.role !== "agent" || ids.length === 0) return [];
@@ -1258,6 +1351,7 @@ function MessageView({
   next,
   serverUrl,
   assigneeName,
+  readAt = null,
   actions = [],
   actionBusy = null,
   disabled = false,
@@ -1268,6 +1362,7 @@ function MessageView({
   next?: SupportMessage;
   serverUrl: string;
   assigneeName?: string | null;
+  readAt?: string | null;
   actions?: AiActionHandler[];
   actionBusy?: number | null;
   disabled?: boolean;
@@ -1316,6 +1411,7 @@ function MessageView({
       {time && !opensNext ? (
         <time className="osb-time" dateTime={message.createdAt}>
           {time}
+          {readAt ? <span className="osb-read">Read</span> : null}
         </time>
       ) : null}
     </article>

@@ -18,6 +18,48 @@ async function listen(server: Server): Promise<number> {
   return address.port;
 }
 
+function openSocket(base: string, path: string, headers: { cookie?: string } = {}) {
+  const events: unknown[] = [];
+  const waiters: Array<(value: unknown) => void> = [];
+  let failed = false;
+  const socket = new WebSocket(`${base.replace(/^http/, "ws")}${path}`, { headers });
+  const opened = new Promise<boolean>((resolve) => {
+    socket.addEventListener("open", () => resolve(true));
+    socket.addEventListener("error", () => {
+      failed = true;
+    });
+    socket.addEventListener("close", () => resolve(false));
+  });
+  socket.addEventListener("message", (message) => {
+    const parsed = JSON.parse(String(message.data)) as unknown;
+    events.push(parsed);
+    for (const waiter of [...waiters]) waiter();
+  });
+  return {
+    opened: opened.then((open) => {
+      if (!open) throw new Error("refused");
+    }),
+    get refused() {
+      return opened.then((open) => !open || failed);
+    },
+    next: (match: (event: { type?: string; typing?: boolean; message?: { body?: string } }) => boolean) =>
+      new Promise((resolve) => {
+        const watch = () => {
+          const index = events.findIndex((event) => match(event as { type?: string; typing?: boolean; message?: { body?: string } }));
+          if (index < 0) return;
+          const at = waiters.indexOf(watch);
+          if (at >= 0) waiters.splice(at, 1);
+          resolve(events.splice(index, 1)[0]);
+        };
+        waiters.push(watch);
+        watch();
+      }),
+    events,
+    send: (payload: unknown) => socket.send(JSON.stringify(payload)),
+    close: () => socket.close(),
+  };
+}
+
 async function start() {
   const dir = mkdtempSync(join(tmpdir(), "osb-http-"));
   process.env.OPEN_SUPPORT_DASHBOARD = "0";
@@ -35,6 +77,74 @@ async function start() {
   const base = `http://127.0.0.1:${port}`;
   return { app, base };
 }
+
+test("a live socket delivers an agent reply to the visitor and a visitor message to the desk", async () => {
+  const { app, base } = await start();
+  try {
+    const login = await fetch(`${base}/api/dashboard/session`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ adminKey: "admin-test-key" }),
+    });
+    const cookie = login.headers.get("set-cookie")?.split(";")[0] ?? "";
+    const started = await fetch(`${base}/api/widget/conversations`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ visitorName: "Ada" }),
+    });
+    const session = (await started.json()) as { conversation: { id: string }; visitorToken: string };
+    const visitor = openSocket(
+      base,
+      `/api/widget/live?conversation=${session.conversation.id}&token=${encodeURIComponent(session.visitorToken)}`,
+    );
+    const desk = openSocket(base, "/api/dashboard/live", { cookie });
+    await visitor.opened;
+    await desk.opened;
+
+    await fetch(`${base}/api/conversations/${session.conversation.id}/messages`, {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({ body: "Looking now", agentName: "Sam" }),
+    });
+    const pushed = (await visitor.next((event) => event.message?.body === "Looking now")) as { type: string; message: { body: string } };
+    assert.equal(pushed.type, "message");
+    assert.equal(pushed.message.body, "Looking now");
+
+    await fetch(`${base}/api/widget/conversations/${session.conversation.id}/messages`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-visitor-token": session.visitorToken },
+      body: JSON.stringify({ body: "Thanks" }),
+    });
+    const seen = (await desk.next((event) => event.message?.body === "Thanks")) as { type: string; message: { body: string } };
+    assert.equal(seen.type, "message");
+    assert.equal(seen.message.body, "Thanks");
+
+    visitor.send({ type: "typing", typing: true });
+    const typing = (await desk.next((event) => event.type === "typing" && event.typing === true)) as { role: string; typing: boolean };
+    assert.equal(typing.role, "visitor");
+    assert.equal(typing.typing, true);
+    const echoed = visitor.events.some((event) => (event as { type?: string }).type === "typing");
+    assert.equal(echoed, false);
+
+    const read = await fetch(`${base}/api/widget/conversations/${session.conversation.id}/read`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-visitor-token": session.visitorToken },
+      body: "{}",
+    });
+    assert.equal(read.status, 200);
+    const receipt = (await desk.next((event) => event.type === "read")) as { role: string; readAt: string };
+    assert.equal(receipt.role, "visitor");
+    assert.ok(receipt.readAt);
+    const thread = await fetch(`${base}/api/conversations/${session.conversation.id}`, { headers: { cookie } });
+    const stored = (await thread.json()) as { conversation: { messages: Array<{ body: string; readAt?: string }> } };
+    assert.equal(stored.conversation.messages.find((message) => message.body === "Looking now")?.readAt, receipt.readAt);
+
+    visitor.close();
+    desk.close();
+  } finally {
+    await app.close();
+  }
+});
 
 test("widget flow and token API", async () => {
   const { app, base } = await start();

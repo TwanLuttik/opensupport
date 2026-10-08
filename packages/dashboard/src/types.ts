@@ -31,6 +31,8 @@ export interface Message {
   attachments?: Attachment[];
   agentName?: string | null;
   createdAt: string;
+  /** Set once the visitor has read this agent message. */
+  readAt?: string;
   actionIds?: number[];
   /** Set when the visitor shared this by pressing an AI action button. */
   actionLabel?: string;
@@ -57,6 +59,8 @@ export interface Conversation {
   metadata: Record<string, string>;
   messages?: Message[];
   rating?: "up" | "down" | "skipped" | null;
+  visitorReadAt?: string | null;
+  agentReadAt?: string | null;
 }
 
 export interface VisitorCard {

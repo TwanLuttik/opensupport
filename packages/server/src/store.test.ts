@@ -65,6 +65,25 @@ test("conversations with the same identifier group together", () => {
   store.close();
 });
 
+test("read cursors advance and never move backward", () => {
+  const store = memoryStore();
+  const created = store.createConversation({}, "secret");
+  assert.equal(created.conversation.visitorReadAt, null);
+  assert.equal(created.conversation.agentReadAt, null);
+  const visitor = store.addMessage(created.conversation.id, { role: "visitor", body: "Help" });
+  const seen = store.markReadAt(created.conversation.id, "agent");
+  assert.equal(seen?.unreadForAgent, 0);
+  assert.ok(seen?.agentReadAt);
+  const messages = store.listMessages(created.conversation.id).messages;
+  assert.equal(messages.find((message) => message.id === visitor.id)?.readAt, seen?.agentReadAt);
+  const stuck = store.markReadAt(created.conversation.id, "agent", "2000-01-01T00:00:00.000Z");
+  assert.equal(stuck?.agentReadAt, seen?.agentReadAt);
+  const agent = store.addMessage(created.conversation.id, { role: "agent", body: "On it", agentName: "Sam" });
+  const visitorSeen = store.markReadAt(created.conversation.id, "visitor");
+  assert.equal(store.listMessages(created.conversation.id).messages.find((message) => message.id === agent.id)?.readAt, visitorSeen?.visitorReadAt);
+  store.close();
+});
+
 test("closed conversations reject visitor replies", () => {
   const store = memoryStore();
   const created = store.createConversation({}, "secret");

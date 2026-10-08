@@ -60,9 +60,10 @@ function DeskDocs() {
       <section className="panel">
         <h3>Inbox</h3>
         <ul>
-          <li><strong>Live chat</strong> is open conversations. <strong>Messages</strong> are emails left while the desk was closed.</li>
+          <li><strong>Needs you</strong> is work waiting on a person. <strong>AI</strong> is chats the model is answering. <strong>Open</strong> is a live chat someone has joined. <strong>Done</strong> is closed.</li>
           <li><strong>Assign to me</strong> puts your name and profile picture on the ticket. The visitor sees both in the bubble.</li>
-          <li>Reply from the composer. The visitor sees your account name, not the word You.</li>
+          <li>Reply from the composer. The visitor sees your account name, not the word You. The typing indicator shows while someone is typing and disappears 3 seconds after they stop.</li>
+          <li>A reply shows <strong>Read</strong> once the other person has opened it. Opening a thread marks it read.</li>
           <li><strong>End conversation</strong> closes the ticket. The visitor sees who ended it and can no longer reply.</li>
           <li>Click an image to view it full screen. Code files open in a reader. Other files have a download button.</li>
           <li>A thread marked <strong>AI chat</strong> is being answered by the model until someone assigns it.</li>
@@ -138,7 +139,7 @@ export function App() {
             <tr><td><code>identifier</code></td><td>—</td><td>Stable id for this person. Conversations that share it are grouped</td></tr>
             <tr><td><code>visitor</code></td><td>—</td><td>Name, email, and string metadata stored when the chat starts</td></tr>
             <tr><td><code>actions</code></td><td>—</td><td>Buttons for AI replies that ask the page for data</td></tr>
-            <tr><td><code>pollIntervalMs</code></td><td><code>3000</code></td><td>How often an open panel checks for replies</td></tr>
+            <tr><td><code>pollIntervalMs</code></td><td><code>3000</code></td><td>How often to check for replies after the live connection gives up</td></tr>
             <tr><td><code>onOpenChange</code></td><td>—</td><td>Called when the panel opens or closes</td></tr>
             <tr><td><code>className</code></td><td>—</td><td>Added to the fixed root element</td></tr>
           </tbody>
@@ -239,7 +240,9 @@ function ApiDocs() {
           <tbody>
             <tr><td><code>GET</code></td><td><code>/api/widget/config</code></td><td>Public copy, colors, hours, and whether AI is on. <code>ai.actions</code> lists configured action ids.</td></tr>
             <tr><td><code>POST</code></td><td><code>/api/widget/conversations</code></td><td>Starts a thread. Body may include <code>handler: "ai"</code>, <code>topic</code>, <code>identifier</code>, and form <code>fields</code>.</td></tr>
-            <tr><td><code>GET</code></td><td><code>/api/widget/conversations/:id</code></td><td>Polls the thread. <code>after</code> returns only newer messages.</td></tr>
+            <tr><td><code>GET</code></td><td><code>/api/widget/live</code></td><td>Websocket for one open chat. Query: <code>conversation</code> and <code>token</code>. Pushes messages, read receipts, typing, and conversation changes. Send <code>{`{ "type": "typing", "typing": true }`}</code> while composing.</td></tr>
+            <tr><td><code>POST</code></td><td><code>/api/widget/conversations/:id/read</code></td><td>Marks agent replies as read. The desk sees <strong>Read</strong> on messages up to that moment.</td></tr>
+            <tr><td><code>GET</code></td><td><code>/api/widget/conversations/:id</code></td><td>Reads the thread. <code>after</code> returns only newer messages. Used when the socket cannot stay open.</td></tr>
             <tr><td><code>POST</code></td><td><code>/api/widget/conversations/:id/messages</code></td><td>Posts a visitor message. Body: <code>{`{ "body", "attachmentIds?" }`}</code>.</td></tr>
             <tr><td><code>POST</code></td><td><code>/api/widget/conversations/:id/ai</code></td><td>Asks the model to answer the latest visitor message. Only for AI chats that no person has joined.</td></tr>
           </tbody>
@@ -268,7 +271,8 @@ function ApiDocs() {
             <tr><td><code>POST</code></td><td><code>/api/conversations/:id/messages</code></td><td>Replies as an agent. Body: <code>{`{ "body", "agentName?", "attachmentIds?" }`}</code>.</td></tr>
             <tr><td><code>POST</code> / <code>PUT</code></td><td><code>/api/conversations/:id/uploads</code></td><td>Chunked upload, then attach the returned id.</td></tr>
             <tr><td><code>PATCH</code></td><td><code>/api/conversations/:id</code></td><td><code>{`{ "status": "open" | "closed" }`}</code>, and optional visitor name or email.</td></tr>
-            <tr><td><code>POST</code></td><td><code>/api/conversations/:id/read</code></td><td>Clears the agent unread counter.</td></tr>
+            <tr><td><code>POST</code></td><td><code>/api/conversations/:id/read</code></td><td>Clears the agent unread counter and marks visitor messages as read.</td></tr>
+            <tr><td><code>GET</code></td><td><code>/api/dashboard/live</code></td><td>Desk websocket. Pushes the same events, and accepts <code>{`{ "type": "typing", "conversationId", "typing" }`}</code>.</td></tr>
             <tr><td><code>POST</code></td><td><code>/api/conversations/:id/assign</code></td><td>Claims the ticket. Joining an AI chat stops the model from answering.</td></tr>
           </tbody>
         </table>

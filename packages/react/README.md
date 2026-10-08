@@ -105,7 +105,7 @@ Put the URL in an env var so local and production point at different servers:
 | `actions` | `AiActionHandler[]` | — | Buttons for AI replies that ask the page for data |
 | `visitor` | `{ name?, email?, metadata? }` | — | Sent only when the thread is created |
 | `visitor.metadata` | `Record<string, string>` | — | Extra context, such as plan or page |
-| `pollIntervalMs` | `number` | `3000` | How often an open panel checks for replies |
+| `pollIntervalMs` | `number` | `3000` | How often to check for replies after the live connection gives up |
 | `onOpenChange` | `(open: boolean) => void` | — | Fires when the panel opens or closes |
 | `className` | `string` | — | Added to the fixed root element |
 
@@ -211,7 +211,9 @@ createRoot(document.getElementById("root")!).render(
 - A badge on the launcher when an agent replies while the panel is closed.
 - A closed composer once an agent marks the conversation closed.
 
-Polling runs only while the panel is open and a conversation already exists.
+An open conversation keeps a websocket to the server. If it drops, the bubble tries to reconnect three times, then falls back to polling at `pollIntervalMs`. Polling also covers browsers without `WebSocket`.
+
+While someone is typing, the other side sees a typing indicator. It disappears 3 seconds after the last keystroke, and comes back when typing starts again. The visitor's latest message says **Read** once an agent has opened the thread. Opening the panel marks agent replies as read.
 
 ## Server requirements
 
@@ -301,7 +303,7 @@ Useful classes: `osb-launcher`, `osb-panel`, `osb-header`, `osb-messages`, `osb-
 
 **A new conversation starts on every message.** `localStorage` is blocked, or `serverUrl` changed (a trailing slash is ignored, anything else is a different key).
 
-**Replies never show up.** Open the panel. Polling is paused while it is closed. Confirm the agent reply went to the same conversation id.
+**Replies never show up.** Confirm the agent reply went to the same conversation id. If the live connection cannot be opened, the bubble falls back to polling after three tries.
 
 **Next.js throws "set NEXT_PUBLIC_SUPPORT_URL".** `OpenSupport` was rendered without `serverUrl`, and the public env var is missing. Add it to `.env.local` and restart `next dev`. The variable must start with `NEXT_PUBLIC_` or the browser bundle will not see it.
 

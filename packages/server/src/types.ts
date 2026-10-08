@@ -15,6 +15,8 @@ export interface Message {
   body: string;
   attachments: Attachment[];
   createdAt: string;
+  /** Set once the other side has read this message. Absent until then. */
+  readAt?: string;
   /** Present when an integration posted the message. */
   agentName?: string;
   /**
@@ -61,6 +63,12 @@ export interface Conversation {
   rating: "up" | "down" | "skipped" | null;
   ratingComment: string | null;
   ratedAt: string | null;
+  /**
+   * How far each side has read. A message is seen when its `createdAt` is at or
+   * before the other side's cursor. Null until that side opens the thread.
+   */
+  visitorReadAt: string | null;
+  agentReadAt: string | null;
 }
 
 export interface ConversationWithMessages extends Conversation {

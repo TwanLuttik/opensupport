@@ -565,25 +565,109 @@ function ThemeSwatch({ colors, title }: { colors: BubbleThemeColors; title: stri
 }
 
 function ThemePreview({ colors, title }: { colors: BubbleThemeColors; title: string }) {
+  const line = mixHex(colors.ink, 0.12);
   return (
-    <div className="theme-preview" style={{ background: colors.panel, color: colors.ink, borderColor: colors.ink }} aria-hidden="true">
+    <div
+      className="theme-preview"
+      style={{ background: colors.panel, color: colors.ink, borderColor: line, ["--preview-line" as string]: line }}
+      aria-hidden="true"
+    >
       <div className="theme-preview-head" style={{ background: colors.header, color: colors.headerText }}>
-        <strong>{title}</strong>
-        <span>We&apos;re online</span>
+        <span className="theme-preview-brand">
+          <span className="theme-preview-avatar">
+            <ChatMark />
+          </span>
+          <span>
+            <strong>{title}</strong>
+            <span className="theme-preview-status">
+              <span className="theme-preview-dot" />
+              We&apos;re online
+            </span>
+          </span>
+        </span>
+        <span className="theme-preview-tools">
+          <span className="theme-preview-end">End chat</span>
+          <span className="theme-preview-close">
+            <CloseMark />
+          </span>
+        </span>
       </div>
-      <div className="theme-preview-body" style={{ background: colors.canvas }}>
-        <span className="theme-preview-agent" style={{ background: colors.agentBubble, color: colors.ink, borderColor: colors.muted }}>
+      <div
+        className="theme-preview-body"
+        style={{ background: `linear-gradient(180deg, rgba(255, 255, 255, 0.65), transparent 48px), ${colors.canvas}` }}
+      >
+        <span className="theme-preview-agent" style={{ background: colors.agentBubble, color: colors.ink, borderColor: line }}>
           Hi! How can we help?
         </span>
         <span className="theme-preview-visitor" style={{ background: colors.accent, color: colors.accentText }}>
           The checkout button is broken
         </span>
       </div>
-      <div className="theme-preview-compose" style={{ background: colors.composer, color: colors.muted, borderColor: colors.ink }}>
-        <span>Write a message…</span>
-        <span style={{ background: colors.accent, color: colors.accentText }}>Send</span>
+      <div className="theme-preview-compose" style={{ background: colors.composer, borderColor: line }}>
+        <span className="theme-preview-tool" style={{ borderColor: line, color: colors.muted }}>
+          <CameraMark />
+        </span>
+        <span className="theme-preview-tool" style={{ borderColor: line, color: colors.muted }}>
+          <ClipMark />
+        </span>
+        <span className="theme-preview-input" style={{ borderColor: line, color: "#9aa1ad", background: "#fafafa" }}>
+          Write a message…
+        </span>
+        <span className="theme-preview-send" style={{ background: colors.accent, color: colors.accentText }}>
+          <SendMark />
+        </span>
       </div>
     </div>
+  );
+}
+
+function mixHex(hex: string, alpha: number): string {
+  const value = hex.replace("#", "");
+  if (!/^[0-9a-fA-F]{6}$/.test(value)) return `rgba(22, 24, 29, ${alpha})`;
+  const r = Number.parseInt(value.slice(0, 2), 16);
+  const g = Number.parseInt(value.slice(2, 4), 16);
+  const b = Number.parseInt(value.slice(4, 6), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+function ChatMark() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path fill="currentColor" d="M5.2 4.8A2.2 2.2 0 0 1 7.4 2.6h9.2a2.2 2.2 0 0 1 2.2 2.2v7.2a2.2 2.2 0 0 1-2.2 2.2H9.1L5.6 17.4a.9.9 0 0 1-1.4-.7V4.8Z" />
+    </svg>
+  );
+}
+
+function CloseMark() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M7 7l10 10M17 7 7 17" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function CameraMark() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" d="M4 8.5h3l1.4-2h7.2l1.4 2H20a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-8a1 1 0 0 1 1-1Z" />
+      <circle cx="12" cy="13" r="3" fill="none" stroke="currentColor" strokeWidth="1.75" />
+    </svg>
+  );
+}
+
+function ClipMark() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" d="M8.5 12.5 14 7a3 3 0 0 1 4.2 4.2l-7.1 7.2a4.2 4.2 0 0 1-6-6L12 5.5" />
+    </svg>
+  );
+}
+
+function SendMark() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path fill="currentColor" d="M3.2 11.1 19.4 3.6c.7-.3 1.4.4 1.1 1.1l-6.4 16.2c-.3.8-1.4.8-1.8.1l-2.2-4.8-4.8-2.2c-.7-.4-.7-1.5.1-1.9Z" />
+    </svg>
   );
 }
 

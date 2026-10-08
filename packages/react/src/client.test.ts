@@ -129,6 +129,18 @@ test("client starts an AI conversation and asks for a reply", async () => {
   assert.equal(new Headers(calls[1]?.init?.headers).get("x-visitor-token"), "secret");
 });
 
+test("client marks the thread read", async () => {
+  let called = "";
+  const fetchImpl: typeof fetch = async (input, init) => {
+    called = `${init?.method} ${String(input)}`;
+    return new Response(JSON.stringify({ readAt: "2026-04-16T12:00:00.000Z" }), { status: 200 });
+  };
+  const client = createClient("http://localhost:8787", fetchImpl);
+  const readAt = await client.markRead({ conversationId: "cnv_1", visitorToken: "secret" });
+  assert.equal(readAt, "2026-04-16T12:00:00.000Z");
+  assert.equal(called, "POST http://localhost:8787/api/widget/conversations/cnv_1/read");
+});
+
 test("client surfaces server errors", async () => {
   const fetchImpl: typeof fetch = async () => new Response(JSON.stringify({ error: "Origin not allowed" }), { status: 403 });
   const client = createClient("http://localhost:8787", fetchImpl);

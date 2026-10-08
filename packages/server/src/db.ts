@@ -174,7 +174,18 @@ function rowToConversation(row: Record<string, unknown>): Conversation {
     rating: row.rating === "up" || row.rating === "down" || row.rating === "skipped" ? row.rating : null,
     ratingComment: row.rating_comment ? String(row.rating_comment) : null,
     ratedAt: row.rated_at ? String(row.rated_at) : null,
+    visitorReadAt: row.visitor_read_at ? String(row.visitor_read_at) : null,
+    agentReadAt: row.agent_read_at ? String(row.agent_read_at) : null,
   };
+}
+
+/** Stamps each message with the moment the other side read up to it. */
+export function withReadReceipts(conversation: Conversation, messages: Message[]): Message[] {
+  return messages.map((message) => {
+    const readAt = message.role === "visitor" ? conversation.agentReadAt : message.role === "agent" ? conversation.visitorReadAt : null;
+    if (!readAt || message.createdAt > readAt) return message;
+    return { ...message, readAt };
+  });
 }
 
 function rowToMessage(row: Record<string, unknown>): Message {
@@ -225,6 +236,8 @@ export class SupportStore {
     this.ensureColumn("conversations", "rating_comment", "TEXT");
     this.ensureColumn("conversations", "rated_at", "TEXT");
     this.ensureColumn("conversations", "accepted_at", "TEXT");
+    this.ensureColumn("conversations", "visitor_read_at", "TEXT");
+    this.ensureColumn("conversations", "agent_read_at", "TEXT");
     this.ensureColumn("accounts", "avatar_url", "TEXT");
     this.ensureColumn("accounts", "presence", "TEXT NOT NULL DEFAULT 'online'");
     this.ensureColumn("accounts", "last_seen_at", "TEXT");
@@ -474,7 +487,8 @@ export class SupportStore {
     const rows = this.db.prepare(sql).all(...params) as unknown as Record<string, unknown>[];
     const hasMore = limit !== undefined && rows.length > limit;
     const slice = hasMore ? rows.slice(0, limit) : rows;
-    const messages = slice.map(rowToMessage);
+    const conversation = this.getConversation(conversationId);
+    const messages = conversation ? withReadReceipts(conversation, slice.map(rowToMessage)) : slice.map(rowToMessage);
     const last = messages.at(-1);
     const lastRow = slice.at(-1);
     return {
@@ -796,9 +810,26 @@ export class SupportStore {
   }
 
   markRead(id: string): Conversation | null {
+    return this.markReadAt(id, "agent");
+  }
+
+  /**
+   * Moves one side's read cursor to now and clears the agent unread counter
+   * when the desk is the reader. The cursor never moves backward.
+   */
+  markReadAt(id: string, role: "visitor" | "agent", readAt = nowIso()): Conversation | null {
     const current = this.getConversation(id);
     if (!current) return null;
-    this.db.prepare("UPDATE conversations SET unread_for_agent = 0 WHERE id = ?").run(id);
+    const column = role === "visitor" ? "visitor_read_at" : "agent_read_at";
+    const previous = role === "visitor" ? current.visitorReadAt : current.agentReadAt;
+    if (previous && previous >= readAt) return current;
+    if (role === "agent") {
+      this.db
+        .prepare(`UPDATE conversations SET ${column} = ?, unread_for_agent = 0 WHERE id = ?`)
+        .run(readAt, id);
+    } else {
+      this.db.prepare(`UPDATE conversations SET ${column} = ? WHERE id = ?`).run(readAt, id);
+    }
     return this.getConversation(id);
   }
 
