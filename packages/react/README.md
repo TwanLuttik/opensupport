@@ -17,10 +17,10 @@ pnpm --filter @open-support/react build
 
 ```bash
 # in your app, which should already depend on react and react-dom
-pnpm link "/Users/twanluttik/Library/Application Support/app.twanagent.desktop/projects/open-support-bubble/packages/react"
+pnpm link /absolute/path/to/open-support-bubble/packages/react
 ```
 
-Quote the path. It contains a space (`Application Support`), and without quotes pnpm fails with `ERR_PNPM_LINK_BAD_PARAMS`. `pnpm link --global @open-support/react` fails with `unexpected argument '--global'`. `pnpm --filter @open-support/react link` fails with `Unknown option: 'recursive'` because `link` is not a workspace command.
+Quote the path if it contains spaces. Without quotes pnpm fails with `ERR_PNPM_LINK_BAD_PARAMS`. `pnpm link --global @open-support/react` fails with `unexpected argument '--global'`. `pnpm --filter @open-support/react link` fails with `Unknown option: 'recursive'` because `link` is not a workspace command.
 
 pnpm records the link in the app:
 

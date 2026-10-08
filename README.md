@@ -214,9 +214,8 @@ pnpm --filter @open-support/react build
 
 ```bash
 # in your React or Next.js app. Pass the folder, not a package name.
-# Quote the path: this checkout lives under "Application Support", and an
-# unquoted space makes pnpm report ERR_PNPM_LINK_BAD_PARAMS.
-pnpm link "/Users/twanluttik/Library/Application Support/app.twanagent.desktop/projects/open-support-bubble/packages/react"
+# Quote the path if it contains spaces, or pnpm reports ERR_PNPM_LINK_BAD_PARAMS.
+pnpm link /absolute/path/to/open-support-bubble/packages/react
 ```
 
 Do not pass `--global` or `--filter`. `pnpm link` only accepts a directory. `--global` is rejected (`unexpected argument '--global'`). An unquoted path with a space is rejected as `ERR_PNPM_LINK_BAD_PARAMS`.
