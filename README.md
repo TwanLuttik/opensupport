@@ -201,7 +201,7 @@ The bubble is `position: fixed` at the bottom-left. The visitor token is kept in
 
 `actions` matches the client actions saved on the **AI agent** page. Buttons appear under the latest AI reply when that reply asked for those ids. The handler's text is sent as the visitor's next message. Full props, Next.js, and the lower-level client are in the React readme.
 
-Build every package with `pnpm build` and run tests with `pnpm test`.
+`pnpm build` builds the public site for Cloudflare. `pnpm build:server` builds the dashboard, server, widget, and SDK. Run tests with `pnpm test`.
 
 ## Use a local checkout instead of npm
 

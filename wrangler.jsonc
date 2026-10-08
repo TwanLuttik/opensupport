@@ -1,5 +1,5 @@
 {
-  "$schema": "node_modules/wrangler/config-schema.json",
+  "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "opensupport",
   // Cloudflare Workers Builds run `wrangler deploy` after the build command.
   // Do not also list wrangler as a dependency: its native runtime fails this install.
