@@ -1,0 +1,10 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "opensupport",
+  "compatibility_date": "2026-10-08",
+  // Static site only. The support server stays on Railway.
+  "assets": {
+    "directory": "./packages/site/dist",
+    "not_found_handling": "404-page"
+  }
+}

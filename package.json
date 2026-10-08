@@ -12,6 +12,7 @@
     "start:server": "pnpm --filter @open-support/server start",
     "start": "node packages/server/dist/cli.js",
     "build": "pnpm --filter @open-support/dashboard build && pnpm --filter @open-support/server build && pnpm --filter @open-support/react build && pnpm --filter @open-support/sdk build",
+    "build:site": "pnpm --filter @open-support/site build",
     "test": "pnpm --filter @open-support/server test && pnpm --filter @open-support/react test && pnpm --filter @open-support/sdk test",
     "typecheck": "pnpm --filter @open-support/server typecheck && pnpm --filter @open-support/dashboard typecheck && pnpm --filter @open-support/react typecheck && pnpm --filter @open-support/sdk typecheck && pnpm --filter @open-support/site typecheck",
     "prepublish:npm": "pnpm --filter @open-support/react build && pnpm --filter @open-support/sdk build",
@@ -21,5 +22,8 @@
     "node": ">=22",
     "pnpm": ">=12"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "devDependencies": {
+    "wrangler": "^4.42.0"
+  }
 }
