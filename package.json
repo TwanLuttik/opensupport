@@ -8,11 +8,14 @@
   "scripts": {
     "dev:server": "pnpm --filter @open-support/server dev",
     "dev:dashboard": "pnpm --filter @open-support/dashboard dev",
+    "dev:site": "pnpm --filter @open-support/site dev",
     "start:server": "pnpm --filter @open-support/server start",
     "start": "node packages/server/dist/cli.js",
     "build": "pnpm --filter @open-support/dashboard build && pnpm --filter @open-support/server build && pnpm --filter @open-support/react build && pnpm --filter @open-support/sdk build",
     "test": "pnpm --filter @open-support/server test && pnpm --filter @open-support/react test && pnpm --filter @open-support/sdk test",
-    "typecheck": "pnpm --filter @open-support/server typecheck && pnpm --filter @open-support/dashboard typecheck && pnpm --filter @open-support/react typecheck && pnpm --filter @open-support/sdk typecheck"
+    "typecheck": "pnpm --filter @open-support/server typecheck && pnpm --filter @open-support/dashboard typecheck && pnpm --filter @open-support/react typecheck && pnpm --filter @open-support/sdk typecheck && pnpm --filter @open-support/site typecheck",
+    "prepublish:npm": "pnpm --filter @open-support/react build && pnpm --filter @open-support/sdk build",
+    "publish:npm": "pnpm prepublish:npm && pnpm --filter @open-support/sdk publish --access public --no-git-checks && pnpm --filter @open-support/react publish --access public --no-git-checks"
   },
   "engines": {
     "node": ">=22",

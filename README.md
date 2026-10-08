@@ -7,6 +7,7 @@ packages/server     @open-support/server     HTTP API + SQLite
 packages/dashboard  @open-support/dashboard  Vite + React inbox, served by the server
 packages/react      @open-support/react      <SupportBubble />
 packages/sdk        @open-support/sdk        token-authenticated API client
+packages/site       @open-support/site       public site for opensupport.dev
 ```
 
 Requires Node 22+ (uses the built-in `node:sqlite` module).
@@ -21,7 +22,7 @@ pnpm --filter @open-support/dashboard build
 pnpm dev:server
 ```
 
-The server listens on `http://localhost:8787`.
+The server listens on `http://localhost:8787`. The public site is a separate package: `pnpm dev:site` serves it at `http://localhost:5175`. It is not built or started with the server.
 
 - `GET /` — dashboard. Sign in with `ADMIN_KEY`, reply to visitors, and configure the widget, allowed origins, webhooks, Telegram, and API tokens.
 - `GET /health` — liveness
@@ -108,7 +109,7 @@ The plaintext token (`osb_live_tok_….…`) is returned **once**. Only a hash i
 
 ## SDK
 
-`@open-support/sdk` wraps the token API. Create a client with the server URL and an API token, then list conversations, list messages, upload a file, send a reply, or close a ticket. Both lists return `nextCursor` for the following page.
+`@open-support/sdk` wraps the token API. Install it with `npm install @open-support/sdk`. Create a client with the server URL and an API token, then list conversations, list messages, upload a file, send a reply, or close a ticket. Both lists return `nextCursor` for the following page.
 
 ```ts
 import { OpenSupport } from "@open-support/sdk";
@@ -174,7 +175,7 @@ curl -X POST http://localhost:8787/api/conversations/cnv_abc/messages \
 
 ## React widget
 
-Install and usage for a React app, including Next.js and Vite, is in [`packages/react/README.md`](packages/react/README.md). Next.js apps should import `OpenSupport` from `@open-support/react/next`.
+Install with `npm install @open-support/react`. Usage for a React app, including Next.js and Vite, is in [`packages/react/README.md`](packages/react/README.md). Next.js apps should import `OpenSupport` from `@open-support/react/next`.
 
 ```tsx
 import { SupportBubble } from "@open-support/react";
@@ -202,9 +203,9 @@ The bubble is `position: fixed` at the bottom-left. The visitor token is kept in
 
 Build every package with `pnpm build` and run tests with `pnpm test`.
 
-## Use the packages before they are published
+## Use a local checkout instead of npm
 
-Nothing is on npm yet. Build first, then link the package into your app. `pnpm link` makes a global symlink, so later edits in this repo are picked up after you rebuild.
+`@open-support/react` and `@open-support/sdk` are published to npm. To try a change that is not published yet, build first, then link the package into your app. `pnpm link` makes a global symlink, so later edits in this repo are picked up after you rebuild.
 
 ```bash
 # in this repo, once

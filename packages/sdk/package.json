@@ -1,6 +1,6 @@
 {
   "name": "@open-support/sdk",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "description": "Typed client for the Open Support server API. Authenticate with an API token.",
   "type": "module",
   "main": "./dist/index.js",
@@ -14,7 +14,9 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "LICENSE",
+    "README.md"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
@@ -29,5 +31,18 @@
   "engines": {
     "node": ">=22"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/TwanLuttik/opensupport.git",
+    "directory": "packages/sdk"
+  },
+  "homepage": "https://opensupport.dev",
+  "bugs": {
+    "url": "https://github.com/TwanLuttik/opensupport/issues"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  }
 }

@@ -1,48 +1,12 @@
 # @open-support/react
 
-Drop-in support chat for a React app. `<SupportBubble />` renders a launcher fixed to the **bottom-left** of the page and talks to a self-hosted [Open Support](../../README.md) server.
-
-Requires React 18 or 19. It works in client-rendered apps and in Next.js App Router and Pages Router. `localStorage` is only read after the component mounts, so server rendering does not crash.
-
-## Install from a local checkout
-
-The package is not on npm. Build it, then link it into the app that should render the bubble.
+Drop-in support chat for a React app. `<SupportBubble />` renders a launcher fixed to the bottom-left of the page and talks to a self-hosted [Open Support](https://opensupport.dev) server.
 
 ```bash
-# in the open-support-bubble repo
-corepack enable
-pnpm install
-pnpm --filter @open-support/react build
+npm install @open-support/react
 ```
 
-```bash
-# in your app, which should already depend on react and react-dom
-pnpm link /absolute/path/to/open-support-bubble/packages/react
-```
-
-Quote the path if it contains spaces. Without quotes pnpm fails with `ERR_PNPM_LINK_BAD_PARAMS`. `pnpm link --global @open-support/react` fails with `unexpected argument '--global'`. `pnpm --filter @open-support/react link` fails with `Unknown option: 'recursive'` because `link` is not a workspace command.
-
-pnpm records the link in the app:
-
-```json
-{
-  "dependencies": {
-    "@open-support/react": "link:../open-support-bubble/packages/react"
-  }
-}
-```
-
-Rebuild this package after you edit it (`pnpm --filter @open-support/react build`). The link points at `packages/react`, whose `exports` read `dist/`, so the app picks up the new build without another install.
-
-Remove the `link:` dependency and run `pnpm install` to go back to a registry version.
-
-If the app is not a pnpm project, install the folder directly instead of linking:
-
-```bash
-npm install /absolute/path/to/open-support-bubble/packages/react
-```
-
-Re-run that install after every rebuild. `react` and `react-dom` stay peer dependencies either way.
+Requires React 18 or 19. `react` and `react-dom` are peer dependencies. It works in client-rendered apps and in the Next.js App Router and Pages Router. `localStorage` is only read after the component mounts, so server rendering does not crash.
 
 ## Add the bubble
 
@@ -53,16 +17,11 @@ import { SupportBubble } from "@open-support/react";
 import "@open-support/react/styles.css";
 
 export function App() {
-  return (
-    <>
-      {/* your app */}
-      <SupportBubble serverUrl="http://localhost:8787" />
-    </>
-  );
+  return <SupportBubble serverUrl="https://support.example.com" />;
 }
 ```
 
-`serverUrl` is the origin of the Open Support server, with no path and no trailing slash. The stylesheet is required. Without it the launcher is an unstyled button.
+`serverUrl` is the origin of your Open Support server, with no path and no trailing slash. The stylesheet is required. Without it the launcher is an unstyled button.
 
 Opening the bubble does not start a conversation. The visitor clicks **Start a conversation** first, then the composer appears. **End chat** closes the thread. A closed thread can be replaced by starting a new one. A refresh restores the same open thread from `localStorage`. Once an agent replies, their name is shown under the title.
 
@@ -74,10 +33,11 @@ Pass a name, email, and string metadata. These are stored on the conversation wh
 import { SupportBubble } from "@open-support/react";
 import "@open-support/react/styles.css";
 
-export function App({ user }: { user: { name: string; email: string; plan: string } }) {
+export function App({ user }: { user: { id: string; name: string; email: string; plan: string } }) {
   return (
     <SupportBubble
-      serverUrl={import.meta.env.VITE_SUPPORT_URL}
+      serverUrl="https://support.example.com"
+      identifier={user.id}
       visitor={{
         name: user.name,
         email: user.email,
@@ -87,6 +47,8 @@ export function App({ user }: { user: { name: string; email: string; plan: strin
   );
 }
 ```
+
+`identifier` is your own stable id for the signed-in person. Every conversation started with the same value is grouped under that visitor in the desk. Leave it off for anonymous visitors. It groups threads. It does not continue the same thread.
 
 Put the URL in an env var so local and production point at different servers:
 
@@ -111,9 +73,9 @@ Put the URL in an env var so local and production point at different servers:
 
 ### AI action buttons
 
-The dashboard **AI agent** page can list client actions. Each one has a number and a description of what the page can look up. That description is added to the model's knowledge. When a reply needs that fact, the model ends with `%%[1,2]%%`. The server stores the reply without the marker and sends the numbers as `actionIds`.
+The desk's **AI agent** page can list client actions. Each one has a number and a description of what the page can look up. That description is added to the model's knowledge. When a reply needs that fact, the model ends with `%%[1,2]%%`. The server stores the reply without the marker and sends the numbers as `actionIds`.
 
-Pass a matching `actions` prop. The button label and the handler live in your app, not the dashboard. The handler returns text, and the bubble sends that text as the visitor's next message.
+Pass a matching `actions` prop. The button label and the handler live in your app, not the desk. The handler returns text, and the bubble sends that text as the visitor's next message.
 
 ```tsx
 <SupportBubble
@@ -130,7 +92,7 @@ Pass a matching `actions` prop. The button label and the handler live in your ap
 
 Buttons show under the latest AI reply, and only for ids that reply asked for. A handler that returns an empty string does not send anything.
 
-Title, subtitle, greeting, placeholder, and theme come from the server (`WIDGET_*` env vars, or the dashboard Appearance settings). The widget loads them from `GET /api/widget/config`. A theme is a template (`ink`, `paper`, `forest`, `ocean`, `dusk`) or `custom` with its own colors. The bubble paints those colors as CSS variables on `.osb-root`.
+Title, subtitle, greeting, placeholder, and theme come from the server. The widget loads them from `GET /api/widget/config`. A theme is `ink`, `paper`, `forest`, `ocean`, `dusk`, or `custom` with its own colors. The bubble paints those colors as CSS variables on `.osb-root`.
 
 ## Next.js
 
@@ -138,7 +100,7 @@ Install `next` 13 or newer alongside React 18 or 19. Import the Next entry inste
 
 ```bash
 # .env.local
-NEXT_PUBLIC_SUPPORT_URL=http://localhost:8787
+NEXT_PUBLIC_SUPPORT_URL=https://support.example.com
 ```
 
 ```tsx
@@ -152,9 +114,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
     <html lang="en">
       <body>
         {children}
-        <OpenSupport
-          visitor={{ metadata: { framework: "next" } }}
-        />
+        <OpenSupport visitor={{ metadata: { framework: "next" } }} />
       </body>
     </html>
   );
@@ -183,7 +143,7 @@ export default function App({ Component, pageProps }: AppProps) {
 }
 ```
 
-If you already have a client boundary and want the shared component, `@open-support/react` (`SupportBubble`) is also safe to server-render. You then pass `serverUrl` yourself. `SupportBubble` does not read Next env vars.
+If you already have a client boundary and want the shared component, import `SupportBubble` from `@open-support/react`. You then pass `serverUrl` yourself. `SupportBubble` does not read Next env vars.
 
 ## Vite
 
@@ -205,8 +165,8 @@ createRoot(document.getElementById("root")!).render(
 
 ## What the visitor sees
 
-- A round **?** button, fixed 20px from the left and bottom edges.
-- A panel that opens above the button. Enter sends, Shift+Enter inserts a newline.
+- A round launcher, fixed 20px from the left and bottom edges. It shows your logo when one is set, otherwise a chat mark.
+- A panel that opens above the button. Enter sends. Shift+Enter inserts a newline.
 - Their own messages on the right, agent replies on the left, and the server greeting as a system line.
 - A badge on the launcher when an agent replies while the panel is closed.
 - A closed composer once an agent marks the conversation closed.
@@ -217,17 +177,15 @@ While someone is typing, the other side sees a typing indicator. It disappears 3
 
 ## Server requirements
 
-The browser calls the server directly, so the server must allow your site's origin:
+The browser calls the server directly, so the server must allow your site's origin. Set `CORS_ORIGIN` to that origin, or to a comma-separated list. `*` allows every origin and is fine for local development only.
 
 ```bash
 CORS_ORIGIN=https://app.example.com
 ```
 
-Use a comma-separated list for more than one origin. `*` allows every origin and is fine for local development only.
+The widget never receives an API token. Tokens are for your own tools that reply to conversations. Use [`@open-support/sdk`](https://www.npmjs.com/package/@open-support/sdk) for that.
 
-The widget never receives an API token. Tokens are for your own tools that reply to conversations. See the [root README](../../README.md) for running the server and the agent API.
-
-While developing, run the server from this repo with `pnpm dev:server` and use `serverUrl="http://localhost:8787"`.
+The server, the desk, and the deploy notes are in the [Open Support repository](https://github.com/TwanLuttik/opensupport). While developing, run the server from that repo with `pnpm dev:server` and use `serverUrl="http://localhost:8787"`.
 
 ## Session storage
 
@@ -236,7 +194,7 @@ The visitor token is stored in `localStorage` under `open-support:<serverUrl>`. 
 ```ts
 import { readSession, writeSession } from "@open-support/react";
 
-const session = readSession(localStorage, "http://localhost:8787");
+const session = readSession(localStorage, "https://support.example.com");
 // { conversationId: "cnv_…", visitorToken: "…" } or null
 ```
 
@@ -249,14 +207,14 @@ Use `createClient` when you want your own UI and only need the HTTP calls.
 ```ts
 import { createClient, writeSession } from "@open-support/react";
 
-const support = createClient("http://localhost:8787");
+const support = createClient("https://support.example.com");
 
 const started = await support.start({
   visitorName: "Ada",
   visitorEmail: "ada@example.com",
 });
 
-writeSession(localStorage, "http://localhost:8787", {
+writeSession(localStorage, "https://support.example.com", {
   conversationId: started.conversation.id,
   visitorToken: started.visitorToken,
 });
@@ -274,7 +232,7 @@ await support.send(
 | `getThread(session, after?)` | Load the thread. `after` is the `createdAt` of the last message you have |
 | `send(session, body)` | Post a visitor message |
 | `askAi(session)` | Ask the model to answer the latest visitor message. `actionIds` lists the page actions that reply requested |
-| `upload(session, { name, type, bytes }, onProgress?)` | Upload a file in 5 MB chunks, up to 50 MB. `onProgress(loaded, total)` fires after each chunk. The bubble shows the bar itself |
+| `upload(session, { name, type, bytes }, onProgress?)` | Upload a file in 5 MB chunks, up to 50 MB. `onProgress(loaded, total)` fires after each chunk |
 
 ## Styling
 
@@ -301,10 +259,23 @@ Useful classes: `osb-launcher`, `osb-panel`, `osb-header`, `osb-messages`, `osb-
 
 **Requests fail with "Origin not allowed".** `CORS_ORIGIN` on the server does not include the page origin (scheme, host, and port). `http://localhost:5173` and `http://127.0.0.1:5173` are different origins.
 
-**A new conversation starts on every message.** `localStorage` is blocked, or `serverUrl` changed (a trailing slash is ignored, anything else is a different key).
+**A new conversation starts on every message.** `localStorage` is blocked, or `serverUrl` changed. A trailing slash is ignored. Anything else is a different key.
 
 **Replies never show up.** Confirm the agent reply went to the same conversation id. If the live connection cannot be opened, the bubble falls back to polling after three tries.
 
 **Next.js throws "set NEXT_PUBLIC_SUPPORT_URL".** `OpenSupport` was rendered without `serverUrl`, and the public env var is missing. Add it to `.env.local` and restart `next dev`. The variable must start with `NEXT_PUBLIC_` or the browser bundle will not see it.
 
 **Styles look missing in Next.js.** Import `@open-support/react/styles.css` from `app/layout.tsx` or `pages/_app.tsx`. A CSS import inside a file that Next never bundles will not be emitted.
+
+## Develop against a local checkout
+
+To try a change that is not published yet, build this package and link the folder into your app:
+
+```bash
+pnpm --filter @open-support/react build
+pnpm link /absolute/path/to/open-support-bubble/packages/react
+```
+
+Quote the path if it contains spaces. Rebuild after edits. The link points at `packages/react`, whose `exports` read `dist/`, so the app picks up the new build without another install.
+
+Created by [CoatCheck Technology, Inc.](https://opensupport.dev)

@@ -1,6 +1,6 @@
 {
   "name": "@open-support/react",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "description": "React chat bubble that floats in the bottom-left and talks to an Open Support server.",
   "type": "module",
   "main": "./dist/index.js",
@@ -20,7 +20,9 @@
     "./styles.css": "./dist/styles.css"
   },
   "files": [
-    "dist"
+    "dist",
+    "LICENSE",
+    "README.md"
   ],
   "sideEffects": [
     "**/*.css"
@@ -50,6 +52,19 @@
     "typescript": "^5.8.2"
   },
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/TwanLuttik/opensupport.git",
+    "directory": "packages/react"
+  },
+  "homepage": "https://opensupport.dev",
+  "bugs": {
+    "url": "https://github.com/TwanLuttik/opensupport/issues"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
   "dependencies": {
     "html2canvas-pro": "^2.5.1",
     "lucide-react": "^1.52.0"
