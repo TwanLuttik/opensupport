@@ -172,20 +172,37 @@ async function readJson<T>(req: IncomingMessage, schema: z.ZodType<T>): Promise<
   return result.data;
 }
 
+/** True for routes the embedded bubble calls. The desk and token API are not on this list. */
+function isWidgetRoute(pathname: string): boolean {
+  const path = pathname.replace(/\/+$/, "") || "/";
+  return path === "/widget.js" || path === "/api/widget" || path.startsWith("/api/widget/");
+}
+
+function originAllowed(origin: string, originSetting: string): boolean {
+  if (originSetting === "*") return true;
+  return originSetting
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean)
+    .includes(origin);
+}
+
+/**
+ * The allowlist is only for sites that embed the bubble. Dashboard, token, and
+ * conversation routes stay open to the browser that loaded the desk, so saving
+ * an embed origin cannot lock the desk out of its own API.
+ */
 function applyCors(req: IncomingMessage, res: ServerResponse, originSetting: string): boolean {
   const origin = req.headers.origin;
   if (!origin) return true;
-  const allowed =
-    originSetting === "*" ||
-    originSetting
-      .split(",")
-      .map((value) => value.trim())
-      .filter(Boolean)
-      .includes(origin);
-  if (!allowed) {
+  const path = (req.url ?? "/").split("?")[0] ?? "/";
+  const widget = isWidgetRoute(path);
+  const allowed = originAllowed(origin, originSetting);
+  if (widget && !allowed) {
     send(res, 403, { error: "Origin not allowed" });
     return false;
   }
+  if (!allowed) return true;
   res.setHeader("access-control-allow-origin", originSetting === "*" ? "*" : origin);
   res.setHeader(
     "access-control-allow-headers",

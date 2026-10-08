@@ -254,7 +254,10 @@ export interface AiSettings {
 
 export interface ServerSettings {
   widget: PublicConfig;
-  /** Origins allowed to call the widget API. `*` allows any site. */
+  /**
+   * Sites allowed to embed the bubble and call the widget API. `*` allows any site.
+   * The dashboard is not on this list. Saving an embed origin does not lock the desk out.
+   */
   corsOrigin: string;
   webhooks: WebhookEndpoint[];
   telegram: TelegramSettings;

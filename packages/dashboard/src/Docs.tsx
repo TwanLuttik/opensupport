@@ -85,7 +85,7 @@ function DeskDocs() {
           <li><strong>Start screen</strong> adds topic buttons and an optional pre-chat form. A field id of <code>name</code> or <code>email</code> fills the visitor card.</li>
           <li><strong>AI models</strong> saves an OpenAI key, picks the model, names the agent, and can limit how often one address may ask.</li>
           <li><strong>AI agent</strong> is the knowledge the model answers from, plus client actions the visitor's page can answer with a button. See the React page for how those buttons are wired.</li>
-          <li><strong>Access</strong> lists the sites allowed to embed the bubble.</li>
+          <li><strong>Access</strong> lists the sites allowed to embed the bubble. The desk itself is always allowed, so saving a site here cannot lock you out.</li>
           <li><strong>Notifications</strong> posts events to a webhook or Telegram, and mints API tokens for the SDK.</li>
         </ul>
       </section>

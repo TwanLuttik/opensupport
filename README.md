@@ -75,7 +75,7 @@ The admin key (`ADMIN_KEY`, or the key printed on first boot) still signs in. Us
 - **Inbox** lists every conversation. A new thread says it is waiting for an agent. Open it and click **Assign to me**. The visitor sees "<name> joined the conversation" and the header names the agent. You can also reply or close the thread.
 - **Appearance** edits the title, subtitle, placeholder, greeting, waiting message, and the bubble theme. Pick a template (Ink, Paper, Forest, Ocean, or Dusk) or customize every color. The bubble reads these live. They override `WIDGET_*` once you save.
 - **Pre-chat form** asks the visitor to fill in fields you define (text, email, long text, or a dropdown) before a conversation starts. Turn it on from Settings. Answers are stored on the ticket. A field id of `name` or `email` also sets the visitor name or email.
-- **Access** sets the browser origins allowed to embed the widget (`*` or a comma-separated list). This overrides `CORS_ORIGIN` once you save.
+- **Access** sets the browser origins allowed to embed the widget (`*` or a comma-separated list). This overrides `CORS_ORIGIN` once you save. The dashboard is always allowed, so the desk stays reachable after you save a site that is not this host.
 - **Webhooks** POST JSON to your URL for `conversation.created` and `message.created`. The signing secret is shown once. Requests include `X-Open-Support-Signature: sha256=<hmac of the raw body>`.
 - **Telegram** sends those events to a bot chat. Reply to the notification in Telegram and the text is posted back to the visitor. The message you reply to must still contain the `cnv_…` id.
 - **AI models** saves an OpenAI API key and picks the model. The key stays on the server.

@@ -1078,8 +1078,8 @@ function Access({
   onSubmit: (event: FormEvent) => void;
 }) {
   return (
-    <Panel title="Who can embed the bubble" summary="Use * for any site, or list origins separated by commas." onSubmit={onSubmit} status={status} saveLabel="Save access">
-      <Field label="Allowed origins" htmlFor="cors" hint="Example: https://app.example.com, http://localhost:3000">
+    <Panel title="Who can embed the bubble" summary="Use * for any site, or list the sites that embed the bubble, separated by commas. This dashboard stays reachable either way." onSubmit={onSubmit} status={status} saveLabel="Save access">
+      <Field label="Allowed origins" htmlFor="cors" hint="Example: https://app.example.com, http://localhost:3000. Do not add this desk. It is always allowed.">
         <input className="input" id="cors" value={cors} required onChange={(event) => onChange(event.target.value)} />
       </Field>
     </Panel>

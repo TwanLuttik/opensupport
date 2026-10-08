@@ -483,12 +483,23 @@ test("dashboard session configures widget, webhooks, and telegram", async () => 
 
     const access = await fetch(`${base}/api/dashboard/access`, {
       method: "PUT",
-      headers: { "content-type": "application/json", cookie: cookie! },
+      headers: { "content-type": "application/json", cookie: cookie!, origin: "https://desk.example" },
       body: JSON.stringify({ corsOrigin: "https://shop.example, https://admin.example" }),
     });
     assert.equal(access.status, 200);
     const allowed = await fetch(`${base}/api/widget/config`, { headers: { origin: "https://admin.example" } });
     assert.equal(allowed.status, 200);
+    const desk = await fetch(`${base}/api/dashboard/session`, {
+      headers: { cookie: cookie!, origin: "https://desk.example" },
+    });
+    assert.equal(desk.status, 200);
+    assert.equal(((await desk.json()) as { authenticated: boolean }).authenticated, true);
+    const locked = await fetch(`${base}/api/widget/config`, { headers: { origin: "https://desk.example" } });
+    assert.equal(locked.status, 403);
+    const stillIn = await fetch(`${base}/api/dashboard/settings`, {
+      headers: { cookie: cookie!, origin: "https://desk.example" },
+    });
+    assert.equal(stillIn.status, 200);
 
     const hook = await fetch(`${base}/api/dashboard/webhooks`, {
       method: "POST",
