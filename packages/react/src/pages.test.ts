@@ -24,3 +24,11 @@ test("trailing slashes and a missing leading slash do not change the match", () 
   assert.equal(pageAllowed("/app/inbox/", ["/app/*"]), true);
   assert.equal(pageAllowed("/", ["/", "/docs/"]), true);
 });
+
+test("a blocklist hides matching paths and wins over the allowlist", () => {
+  assert.equal(pageAllowed("/checkout", undefined, ["/checkout", "/admin/*"]), false);
+  assert.equal(pageAllowed("/admin/users", undefined, ["/admin/*"]), false);
+  assert.equal(pageAllowed("/docs", undefined, ["/checkout"]), true);
+  assert.equal(pageAllowed("/app/billing", ["/app/*"], ["/app/billing"]), false);
+  assert.equal(pageAllowed("/app/settings", ["/app/*"], ["/app/billing"]), true);
+});

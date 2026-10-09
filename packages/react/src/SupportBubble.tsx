@@ -112,6 +112,7 @@ export function SupportBubble({
   pollIntervalMs = 3000,
   onOpenChange,
   pages,
+  hiddenPages,
   className,
 }: SupportBubbleProps) {
   const titleId = useId();
@@ -165,13 +166,13 @@ export function SupportBubble({
   const [peerTyping, setPeerTyping] = useState(false);
   const [agentReadAt, setAgentReadAt] = useState<string | null>(null);
   const [sessionLost, setSessionLost] = useState(false);
-  const [allowedHere, setAllowedHere] = useState(() => pageAllowed(currentPath(), pages));
+  const [allowedHere, setAllowedHere] = useState(() => pageAllowed(currentPath(), pages, hiddenPages));
   const typingStop = useRef(0);
-  const pagesKey = pages?.join("\0") ?? "";
+  const pagesKey = `${pages?.join("\0") ?? ""}\n${hiddenPages?.join("\0") ?? ""}`;
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const sync = () => setAllowedHere(pageAllowed(window.location.pathname, pages));
+    const sync = () => setAllowedHere(pageAllowed(window.location.pathname, pages, hiddenPages));
     sync();
     const timer = window.setInterval(sync, 300);
     window.addEventListener("popstate", sync);
@@ -181,7 +182,7 @@ export function SupportBubble({
       window.removeEventListener("popstate", sync);
       window.removeEventListener("hashchange", sync);
     };
-  }, [pages, pagesKey]);
+  }, [hiddenPages, pages, pagesKey]);
 
   useEffect(() => {
     if (allowedHere || !open) return;

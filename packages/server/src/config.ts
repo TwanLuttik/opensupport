@@ -1,3 +1,5 @@
+import { existsSync } from "node:fs";
+import { isAbsolute, join } from "node:path";
 import { defaultBubbleTheme } from "./themes.js";
 import type { PublicConfig } from "./types.js";
 
@@ -21,13 +23,14 @@ function env(name: string): string | undefined {
 }
 
 export function loadConfig(overrides: Partial<ServerConfig> = {}): ServerConfig {
+  const paths = persistentPaths();
   return {
     port: Number(env("PORT") ?? 8787),
     host: env("HOST") ?? "0.0.0.0",
-    databasePath: env("DATABASE_PATH") ?? "./data/support.db",
+    databasePath: paths.databasePath,
     corsOrigin: env("CORS_ORIGIN") ?? "*",
     adminKey: env("ADMIN_KEY"),
-    uploadDir: env("UPLOAD_DIR") ?? "./data/uploads",
+    uploadDir: paths.uploadDir,
     maxUploadBytes: Number(env("MAX_UPLOAD_BYTES") ?? 50 * 1024 * 1024),
     publicConfig: {
       title: env("WIDGET_TITLE") ?? "Support",
@@ -47,4 +50,34 @@ export function loadConfig(overrides: Partial<ServerConfig> = {}): ServerConfig 
     },
     ...overrides,
   };
+}
+
+/**
+ * Railway wipes the container on every deploy. A mounted volume is the only
+ * disk that survives, so a relative `./data` path would open a fresh database
+ * and the desk would ask to create the admin again.
+ * `RAILWAY_VOLUME_MOUNT_PATH` is set when a volume is attached.
+ */
+export function persistentPaths(
+  values: Record<string, string | undefined> = process.env,
+): { databasePath: string; uploadDir: string } {
+  const volume = values.RAILWAY_VOLUME_MOUNT_PATH?.trim();
+  const databasePath = values.DATABASE_PATH?.trim();
+  const uploadDir = values.UPLOAD_DIR?.trim();
+  return {
+    databasePath: placeOnVolume(databasePath, volume, "support.db"),
+    uploadDir: placeOnVolume(uploadDir, volume, "uploads"),
+  };
+}
+
+function placeOnVolume(configured: string | undefined, volume: string | undefined, fallbackName: string): string {
+  if (!volume) return configured && configured.length > 0 ? configured : join("data", fallbackName);
+  if (!configured) return join(volume, fallbackName);
+  if (isAbsolute(configured)) return configured;
+  // Already rooted on the volume, including a path relative to the mount.
+  if (configured === volume || configured.startsWith(`${volume}/`)) return configured;
+  const rooted = join(volume, configured);
+  // Keep an existing relative file when this process can still see it, such as local dev.
+  if (existsSync(configured) && !existsSync(rooted)) return configured;
+  return rooted;
 }

@@ -70,18 +70,20 @@ Put the URL in an env var so local and production point at different servers:
 | `pollIntervalMs` | `number` | `3000` | How often to check for replies after the live connection gives up |
 | `onOpenChange` | `(open: boolean) => void` | — | Fires when the panel opens or closes |
 | `pages` | `string[]` | — | Paths where the bubble is shown. Omit it to show it everywhere |
+| `hiddenPages` | `string[]` | — | Paths where the bubble stays hidden. Wins over `pages` |
 | `className` | `string` | — | Added to the fixed root element |
 
-`pages` is an allowlist. `/` and `/docs` match that path only. A trailing `*` matches that path and everything under it.
+`pages` is an allowlist. `hiddenPages` is a blocklist. Both use the same patterns: `/` and `/docs` match that path only, and a trailing `*` matches that path and everything under it. A path on both lists stays hidden.
 
 ```tsx
 <SupportBubble
   serverUrl="https://support.example.com"
   pages={["/", "/docs", "/app/*"]}
+  hiddenPages={["/app/billing", "/admin/*"]}
 />
 ```
 
-`/app/*` shows the bubble on `/app` and `/app/settings`, not on `/application`. The bubble hides itself when the visitor moves to a path that is not listed, including after a client-side navigation. An open panel closes. The conversation stays saved and comes back on an allowed page.
+`/app/*` shows the bubble on `/app` and `/app/settings`, not on `/application`. The bubble hides itself on a blocked path, or on a path missing from `pages`, including after a client-side navigation. An open panel closes. The conversation stays saved and comes back on an allowed page.
 
 ### AI action buttons
 

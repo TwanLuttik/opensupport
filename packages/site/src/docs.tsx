@@ -78,6 +78,7 @@ export function App() {
             ["pollIntervalMs", "number", "3000", "Poll interval after the live connection gives up"],
             ["onOpenChange", "(open: boolean) => void", "—", "Fires when the panel opens or closes"],
             ["pages", "string[]", "—", "Allowlist. /docs matches that path. /app/* matches /app and everything under it. Omit to show everywhere"],
+            ["hiddenPages", "string[]", "—", "Blocklist, same patterns. A path on both lists stays hidden"],
             ["className", "string", "—", "Added to the fixed root element"],
           ],
         },

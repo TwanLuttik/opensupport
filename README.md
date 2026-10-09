@@ -51,7 +51,7 @@ On first boot without `ADMIN_KEY`, a one-time admin key is printed. Set `ADMIN_K
 
 One service runs the API and the dashboard. Railway builds with Railpack, which reads `railpack.json`: it compiles the dashboard and then the server, and starts `node packages/server/dist/cli.js`. The React widget and the SDK are not built or started. Node 22 comes from `engines` and `nixpacks.toml`. Railway sets `PORT`.
 
-The container disk is wiped on every deploy. Add a volume mounted at `/data`, then set:
+The container disk is wiped on every deploy. Add a volume mounted at `/data`. Railway sets `RAILWAY_VOLUME_MOUNT_PATH`, and a relative `DATABASE_PATH` or `UPLOAD_DIR` is stored on that volume so the admin account survives the next deploy. Absolute paths are used as given. You can also set:
 
 | Variable | Value |
 | --- | --- |

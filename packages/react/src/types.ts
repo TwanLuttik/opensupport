@@ -183,6 +183,11 @@ export interface SupportBubbleProps {
    * everything under it, so `/app/*` covers `/app` and `/app/settings`.
    */
   pages?: string[];
+  /**
+   * Paths where the bubble stays hidden. Same patterns as `pages`.
+   * A path on both lists stays hidden.
+   */
+  hiddenPages?: string[];
   className?: string;
 }
 

@@ -9,6 +9,7 @@ app.server.listen(config.port, config.host, () => {
   const origin = `http://${config.host === "0.0.0.0" ? "localhost" : config.host}:${config.port}`;
   console.log(`Open Support server listening on ${origin}`);
   console.log(`Dashboard: ${origin}/`);
+  console.log(`Database: ${config.databasePath}`);
   if (app.generatedAdminKey) {
     console.log("");
     console.log("No ADMIN_KEY was set. This admin key was generated for this process only:");
