@@ -1,6 +1,6 @@
 "use client";
 
-export { pageAllowed } from "./pages.js";
+export { currentRoute, pageAllowed } from "./pages.js";
 export { SupportBubble } from "./SupportBubble.js";
 export {
   clearSession,

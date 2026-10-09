@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { pageAllowed } from "./pages.js";
+import { currentRoute, pageAllowed } from "./pages.js";
 
 const pages = ["/", "/docs", "/app/*"];
 
@@ -31,4 +31,16 @@ test("a blocklist hides matching paths and wins over the allowlist", () => {
   assert.equal(pageAllowed("/docs", undefined, ["/checkout"]), true);
   assert.equal(pageAllowed("/app/billing", ["/app/*"], ["/app/billing"]), false);
   assert.equal(pageAllowed("/app/settings", ["/app/*"], ["/app/billing"]), true);
+});
+
+test("a Next base path and a hash route still match the patterns", () => {
+  const hidden = ["/business/*", "/", "/pricing"];
+  assert.equal(pageAllowed("/app/pricing", undefined, hidden, "/app"), false);
+  assert.equal(pageAllowed("/app/business/settings", undefined, hidden, "/app"), false);
+  assert.equal(pageAllowed("/app", undefined, hidden, "/app"), false);
+  assert.equal(pageAllowed("/app/docs", undefined, hidden, "/app"), true);
+  assert.equal(currentRoute({ pathname: "/", hash: "#/pricing" }), "/pricing");
+  assert.equal(pageAllowed(currentRoute({ pathname: "/", hash: "#/pricing" }), undefined, hidden), false);
+  assert.equal(pageAllowed(currentRoute({ pathname: "/pricing", hash: "#top" }), undefined, hidden), false);
+  assert.equal(pageAllowed(currentRoute({ pathname: "/docs", hash: "#install" }), undefined, hidden), true);
 });

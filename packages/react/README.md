@@ -85,6 +85,8 @@ Put the URL in an env var so local and production point at different servers:
 
 `/app/*` shows the bubble on `/app` and `/app/settings`, not on `/application`. The bubble hides itself on a blocked path, or on a path missing from `pages`, including after a client-side navigation. An open panel closes. The conversation stays saved and comes back on an allowed page.
 
+A Next.js `basePath` is removed before matching, when `NEXT_PUBLIC_BASE_PATH` is set. `/pricing` then hides `https://example.com/app/pricing`. Hash routes are matched too, so `/pricing` hides `/#/pricing`. A hash that is only an in-page link, such as `/docs#install`, does not change the path.
+
 ### AI action buttons
 
 The desk's **AI agent** page can list client actions. Each one has a number and a description of what the page can look up. That description is added to the model's knowledge. When a reply needs that fact, the model ends with `%%[1,2]%%`. The server stores the reply without the marker and sends the numbers as `actionIds`.

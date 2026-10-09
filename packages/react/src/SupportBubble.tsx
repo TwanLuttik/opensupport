@@ -5,7 +5,7 @@ import { Camera, File, FileArchive, FileAudio, FileCode, FileImage, FileText, Fi
 import { capturePage } from "./screenshot.js";
 import { clearStoredSession, createClient, isStaleSessionError, loadStoredSession, saveStoredSession } from "./client.js";
 import { BUBBLE_RECONNECTS, connectLive, sendTyping, widgetSocketUrl } from "./live.js";
-import { pageAllowed } from "./pages.js";
+import { currentRoute, pageAllowed } from "./pages.js";
 import type { AiActionHandler, Attachment, PublicConfig, StoredSession, SupportBubbleProps, SupportConversation, SupportMessage } from "./types.js";
 import { UPLOAD_MAX_BYTES } from "./client.js";
 
@@ -166,13 +166,14 @@ export function SupportBubble({
   const [peerTyping, setPeerTyping] = useState(false);
   const [agentReadAt, setAgentReadAt] = useState<string | null>(null);
   const [sessionLost, setSessionLost] = useState(false);
-  const [allowedHere, setAllowedHere] = useState(() => pageAllowed(currentPath(), pages, hiddenPages));
+  const basePath = nextBasePath();
+  const [allowedHere, setAllowedHere] = useState(() => pageAllowed(currentRoute(currentLocation(), basePath), pages, hiddenPages));
   const typingStop = useRef(0);
   const pagesKey = `${pages?.join("\0") ?? ""}\n${hiddenPages?.join("\0") ?? ""}`;
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const sync = () => setAllowedHere(pageAllowed(window.location.pathname, pages, hiddenPages));
+    const sync = () => setAllowedHere(pageAllowed(currentRoute(window.location, nextBasePath()), pages, hiddenPages));
     sync();
     const timer = window.setInterval(sync, 300);
     window.addEventListener("popstate", sync);
@@ -1151,9 +1152,15 @@ function playBoop(count: number): void {
   window.setTimeout(() => void context.close(), 700);
 }
 
-function currentPath(): string {
-  if (typeof window === "undefined") return "/";
-  return window.location.pathname || "/";
+function currentLocation(): { pathname: string; hash: string } {
+  if (typeof window === "undefined") return { pathname: "/", hash: "" };
+  return { pathname: window.location.pathname || "/", hash: window.location.hash || "" };
+}
+
+/** Next inlines this when the app is served from a subpath. An empty value means the site root. */
+function nextBasePath(): string {
+  const value = process.env.NEXT_PUBLIC_BASE_PATH;
+  return typeof value === "string" ? value : "";
 }
 
 function absoluteUrl(serverUrl: string, path: string): string {
