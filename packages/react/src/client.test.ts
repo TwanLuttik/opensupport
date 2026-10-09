@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createClient, loadStoredSession, readSession, sessionStorageKey, writeSession } from "./client.js";
+import { createClient, isStaleSessionError, loadStoredSession, readSession, sessionStorageKey, WidgetRequestError, writeSession } from "./client.js";
 
 test("session helpers round-trip and ignore junk", () => {
   const bag = new Map<string, string>();
@@ -145,4 +145,30 @@ test("client surfaces server errors", async () => {
   const fetchImpl: typeof fetch = async () => new Response(JSON.stringify({ error: "Origin not allowed" }), { status: 403 });
   const client = createClient("http://localhost:8787", fetchImpl);
   await assert.rejects(() => client.getConfig(), /Origin not allowed/);
+});
+
+test("an expired visitor session is distinguishable from a wrong token", async () => {
+  const fetchImpl: typeof fetch = async () =>
+    new Response(JSON.stringify({ error: "This conversation is no longer available", code: "visitor_session_expired" }), { status: 401 });
+  const client = createClient("http://localhost:8787", fetchImpl);
+  await assert.rejects(
+    () => client.getThread({ conversationId: "cnv_1", visitorToken: "secret" }),
+    (error: unknown) => {
+      assert.equal(isStaleSessionError(error), true);
+      assert.ok(error instanceof WidgetRequestError);
+      assert.equal(error.status, 401);
+      return true;
+    },
+  );
+
+  const wrong: typeof fetch = async () => new Response(JSON.stringify({ error: "Invalid visitor token" }), { status: 401 });
+  const other = createClient("http://localhost:8787", wrong);
+  await assert.rejects(
+    () => other.close({ conversationId: "cnv_1", visitorToken: "secret" }),
+    (error: unknown) => {
+      assert.equal(isStaleSessionError(error), false);
+      assert.match(error instanceof Error ? error.message : "", /Invalid visitor token/);
+      return true;
+    },
+  );
 });

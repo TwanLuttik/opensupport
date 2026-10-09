@@ -1,3 +1,5 @@
+import { BubbleStage } from "./demo-bubble";
+
 const GITHUB = "https://github.com/TwanLuttik/opensupport";
 
 const features = [
@@ -53,6 +55,7 @@ export function App() {
           <a href="#product">Product</a>
           <a href="#desk">Desk</a>
           <a href="#host">Host</a>
+          <a href="#/docs/react">Docs</a>
           <a href={GITHUB}>Source</a>
         </nav>
         <a className="btn btn-primary bar-cta" href={GITHUB}>
@@ -73,8 +76,8 @@ export function App() {
               <a className="btn btn-primary" href={GITHUB}>
                 View on GitHub
               </a>
-              <a className="btn" href="#host">
-                How to run it
+              <a className="btn" href="#/docs/react">
+                Developer docs
               </a>
             </div>
             <p className="fine">
@@ -203,6 +206,7 @@ import "@open-support/react/styles.css";
       <footer className="foot">
         <p>Open Support</p>
         <p>Created by CoatCheck Technology, Inc.</p>
+        <a href="#/docs/react">Docs</a>
         <a href={GITHUB}>Source</a>
       </footer>
     </div>
@@ -215,62 +219,6 @@ function Mark() {
       <span />
       <span />
     </span>
-  );
-}
-
-function BubbleStage() {
-  return (
-    <div className="stage" aria-hidden="true">
-      <div className="panel">
-        <div className="panel-head">
-          <span className="avatar">
-            <ChatMark />
-          </span>
-          <span>
-            <strong>Support</strong>
-            <em>
-              <i /> We're online
-            </em>
-          </span>
-        </div>
-        <div className="panel-body">
-          <p className="system">Hi! How can we help?</p>
-          <p className="visitor">The export button does nothing after I pick a date range.</p>
-          <p className="agent">
-            <span>Sam</span>
-            Looking now. Which plan is the workspace on?
-          </p>
-        </div>
-        <div className="panel-compose">
-          <span>Write a message…</span>
-          <span className="send">
-            <Arrow />
-          </span>
-        </div>
-      </div>
-      <div className="launcher">
-        <ChatMark />
-      </div>
-    </div>
-  );
-}
-
-function ChatMark() {
-  return (
-    <svg viewBox="0 0 24 24" width="22" height="22" fill="none" aria-hidden="true">
-      <path
-        d="M6 16.5 4.2 19.2c-.4.6.1 1.4.8 1.3L9 20.2A8 8 0 1 0 6 16.5Z"
-        fill="currentColor"
-      />
-    </svg>
-  );
-}
-
-function Arrow() {
-  return (
-    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" aria-hidden="true">
-      <path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" strokeWidth="1.8" />
-    </svg>
   );
 }
 

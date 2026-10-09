@@ -52,9 +52,9 @@ export function createClient(serverUrl: string, fetchImpl: typeof fetch = fetch)
         ...init.headers,
       },
     });
-    const data = (await response.json().catch(() => ({}))) as T & { error?: string };
+    const data = (await response.json().catch(() => ({}))) as T & { error?: string; code?: string };
     if (!response.ok) {
-      throw new Error(data.error || `Request failed (${response.status})`);
+      throw new WidgetRequestError(data.error || `Request failed (${response.status})`, response.status, data.code);
     }
     return data;
   }
@@ -216,6 +216,23 @@ async function uploadRequest<T>(
   const data = (await response.json().catch(() => ({}))) as T & { error?: string };
   if (!response.ok) throw new Error(data.error || "Upload failed");
   return data;
+}
+
+/** The saved visitor token no longer matches a conversation on the server. */
+export function isStaleSessionError(error: unknown): boolean {
+  return error instanceof WidgetRequestError && error.status === 401 && error.code === "visitor_session_expired";
+}
+
+export class WidgetRequestError extends Error {
+  readonly status: number;
+  readonly code?: string;
+
+  constructor(message: string, status: number, code?: string) {
+    super(message);
+    this.name = "WidgetRequestError";
+    this.status = status;
+    this.code = code;
+  }
 }
 
 export function sessionStorageKey(serverUrl: string): string {

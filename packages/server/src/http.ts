@@ -1627,11 +1627,16 @@ function authorizeVisitor(
     return null;
   }
   const conversation = store.getConversationByVisitorToken(token);
-  if (!conversation || conversation.id !== conversationId) {
-    send(res, 401, { error: "Invalid visitor token" });
+  if (conversation && conversation.id === conversationId) return conversation;
+  // The conversation is gone (new database, deleted row) rather than a token
+  // that belongs to a different thread. The bubble can drop this session.
+  const known = store.getConversation(conversationId);
+  if (!known) {
+    send(res, 401, { error: "This conversation is no longer available", code: "visitor_session_expired" });
     return null;
   }
-  return conversation;
+  send(res, 401, { error: "Invalid visitor token" });
+  return null;
 }
 
 async function handleUpload(

@@ -183,6 +183,23 @@ test("widget flow and token API", async () => {
       headers: { "x-visitor-token": "nope" },
     });
     assert.equal(stranger.status, 401);
+    assert.equal(((await stranger.json()) as { error: string; code?: string }).code, undefined);
+
+    const gone = await fetch(`${base}/api/widget/conversations/cnv_missing`, {
+      headers: { "x-visitor-token": session.visitorToken },
+    });
+    assert.equal(gone.status, 401);
+    const expired = (await gone.json()) as { error: string; code?: string };
+    assert.equal(expired.code, "visitor_session_expired");
+    assert.match(expired.error, /no longer available/);
+
+    const cannotEnd = await fetch(`${base}/api/widget/conversations/cnv_missing`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json", "x-visitor-token": "old-token" },
+      body: JSON.stringify({ status: "closed" }),
+    });
+    assert.equal(cannotEnd.status, 401);
+    assert.equal(((await cannotEnd.json()) as { code?: string }).code, "visitor_session_expired");
 
     const missingToken = await fetch(`${base}/api/conversations`);
     assert.equal(missingToken.status, 401);

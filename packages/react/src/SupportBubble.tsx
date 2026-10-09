@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type AnimationEvent as ReactAnimationEvent, type CSSProperties, type DragEvent, type FormEvent } from "react";
 import { Camera, File, FileArchive, FileAudio, FileCode, FileImage, FileText, FileVideo, ThumbsDown, ThumbsUp } from "lucide-react";
 import { capturePage } from "./screenshot.js";
-import { clearStoredSession, createClient, loadStoredSession, saveStoredSession } from "./client.js";
+import { clearStoredSession, createClient, isStaleSessionError, loadStoredSession, saveStoredSession } from "./client.js";
 import { BUBBLE_RECONNECTS, connectLive, sendTyping, widgetSocketUrl } from "./live.js";
 import type { AiActionHandler, Attachment, PublicConfig, StoredSession, SupportBubbleProps, SupportConversation, SupportMessage } from "./types.js";
 import { UPLOAD_MAX_BYTES } from "./client.js";
@@ -162,6 +162,7 @@ export function SupportBubble({
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [peerTyping, setPeerTyping] = useState(false);
   const [agentReadAt, setAgentReadAt] = useState<string | null>(null);
+  const [sessionLost, setSessionLost] = useState(false);
   const typingStop = useRef(0);
 
   useEffect(() => {
@@ -241,9 +242,25 @@ export function SupportBubble({
       return;
     }
     refresh().catch((err: unknown) => {
+      if (isStaleSessionError(err)) {
+        setSessionLost(true);
+        return;
+      }
       setError(err instanceof Error ? err.message : "Could not load the conversation.");
     });
   }, [refresh, serverUrl]);
+
+  useEffect(() => {
+    if (!sessionLost || !sessionRef.current) return;
+    sessionRef.current = null;
+    setHasSession(false);
+    setConversationId(null);
+    setMessages([]);
+    setClosed(false);
+    setConfirmEnd(false);
+    setReady(true);
+    clearStoredSession(serverUrl);
+  }, [serverUrl, sessionLost]);
 
   useEffect(() => {
     const session = sessionRef.current;
@@ -378,6 +395,7 @@ export function SupportBubble({
   function forgetConversation() {
     sessionRef.current = null;
     setHasSession(false);
+    setSessionLost(false);
     setConversationId(null);
     setMessages([]);
     setAgentName(null);
@@ -485,6 +503,11 @@ export function SupportBubble({
       setConfirmEnd(false);
       setShowArchive(false);
     } catch (err) {
+      if (isStaleSessionError(err)) {
+        setSessionLost(true);
+        setConfirmEnd(false);
+        return;
+      }
       setError(err instanceof Error ? err.message : "Could not end the conversation.");
     } finally {
       setEnding(false);
@@ -595,6 +618,10 @@ export function SupportBubble({
       setDraft("");
       setPendingFile(null);
     } catch (err) {
+      if (isStaleSessionError(err)) {
+        setSessionLost(true);
+        return;
+      }
       setError(err instanceof Error ? err.message : "Could not send your message.");
     } finally {
       setSending(false);
@@ -834,7 +861,7 @@ export function SupportBubble({
             ) : null}
             {!started && (isLive || aiOffered) && !showForm && !leaveMessage ? (
               <div className="osb-welcome">
-                <p>{config.greeting}</p>
+                {sessionLost ? <p className="osb-hint">This conversation is no longer available. You can start a new one.</p> : <p>{config.greeting}</p>}
                 {config.responseTime?.label ? <p className="osb-response">{config.responseTime.label}</p> : null}
                 {!isLive ? <HoursTable hours={config.officeHours} /> : null}
                 <StartChoices

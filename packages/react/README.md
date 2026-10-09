@@ -261,6 +261,8 @@ Useful classes: `osb-launcher`, `osb-panel`, `osb-header`, `osb-messages`, `osb-
 
 **A new conversation starts on every message.** `localStorage` is blocked, or `serverUrl` changed. A trailing slash is ignored. Anything else is a different key.
 
+**The panel says "Invalid visitor token" and End chat does nothing.** The saved token no longer matches a conversation on this server. That happens when the database was replaced, or the conversation was deleted. The desk can still close a conversation that exists. A current bubble drops a session the server says is gone (`visitor_session_expired`) and offers a new chat. A token that belongs to a different conversation is still rejected.
+
 **Replies never show up.** Confirm the agent reply went to the same conversation id. If the live connection cannot be opened, the bubble falls back to polling after three tries.
 
 **Next.js throws "set NEXT_PUBLIC_SUPPORT_URL".** `OpenSupport` was rendered without `serverUrl`, and the public env var is missing. Add it to `.env.local` and restart `next dev`. The variable must start with `NEXT_PUBLIC_` or the browser bundle will not see it.
