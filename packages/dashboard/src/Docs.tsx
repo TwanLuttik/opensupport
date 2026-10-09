@@ -141,6 +141,7 @@ export function App() {
             <tr><td><code>actions</code></td><td>—</td><td>Buttons for AI replies that ask the page for data</td></tr>
             <tr><td><code>pollIntervalMs</code></td><td><code>3000</code></td><td>How often to check for replies after the live connection gives up</td></tr>
             <tr><td><code>onOpenChange</code></td><td>—</td><td>Called when the panel opens or closes</td></tr>
+            <tr><td><code>pages</code></td><td>—</td><td>Paths where the bubble is shown. <code>/docs</code> is exact. <code>/app/*</code> includes everything under <code>/app</code>. Omit it to show the bubble everywhere</td></tr>
             <tr><td><code>className</code></td><td>—</td><td>Added to the fixed root element</td></tr>
           </tbody>
         </table>

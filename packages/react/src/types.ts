@@ -177,6 +177,12 @@ export interface SupportBubbleProps {
   pollIntervalMs?: number;
   /** Called when the panel opens or closes. */
   onOpenChange?: (open: boolean) => void;
+  /**
+   * Paths where the bubble is shown. Omit it to show the bubble on every page.
+   * `/` and `/docs` match that path only. A trailing `*` matches that path and
+   * everything under it, so `/app/*` covers `/app` and `/app/settings`.
+   */
+  pages?: string[];
   className?: string;
 }
 

@@ -77,6 +77,7 @@ export function App() {
             ["actions", "AiActionHandler[]", "—", "Buttons for AI replies that ask the page for data"],
             ["pollIntervalMs", "number", "3000", "Poll interval after the live connection gives up"],
             ["onOpenChange", "(open: boolean) => void", "—", "Fires when the panel opens or closes"],
+            ["pages", "string[]", "—", "Allowlist. /docs matches that path. /app/* matches /app and everything under it. Omit to show everywhere"],
             ["className", "string", "—", "Added to the fixed root element"],
           ],
         },
