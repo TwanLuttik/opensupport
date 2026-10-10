@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { useNavigate, useParams } from "react-router-dom";
 import { File, FileArchive, FileAudio, FileCode, FileImage, FileText, FileVideo } from "lucide-react";
 import { api } from "./api.js";
 import { formatMessageTime } from "./format.js";
@@ -31,6 +32,8 @@ function groupConversations(conversations: Conversation[]): Group[] {
 }
 
 export function Inbox({ me }: { me: Account | null }) {
+  const navigate = useNavigate();
+  const { conversationId: requestedId } = useParams();
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [current, setCurrent] = useState<Conversation | null>(null);
@@ -72,8 +75,11 @@ export function Inbox({ me }: { me: Account | null }) {
     await api(`/api/conversations/${id}/read`, { method: "POST", body: "{}" });
     const fresh = await api<{ conversation: Conversation }>(`/api/conversations/${id}`);
     setCurrent(fresh.conversation);
+    if (fresh.conversation.identifier) openVisitor(fresh.conversation.identifier);
+    else setVisitor(visitorFromConversation(fresh.conversation));
     loadPages(id).catch(() => setPages([]));
     loadList().catch(() => {});
+    if (requestedId !== id) navigate(`/inbox/${id}`, { replace: true });
   }
 
   async function openVisitor(identifier: string) {
@@ -94,6 +100,13 @@ export function Inbox({ me }: { me: Account | null }) {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [confirmEnd]);
+
+  useEffect(() => {
+    if (!requestedId || requestedId === currentId.current) return;
+    openConversation(requestedId).catch(() => {});
+    // Deep links from Telegram land here. Re-open only when the URL changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [requestedId]);
 
   useEffect(() => {
     loadList().catch(() => setLoaded(true));
@@ -119,10 +132,10 @@ export function Inbox({ me }: { me: Account | null }) {
       const conversation = event.conversation;
       setConversations((current) => upsertConversation(current, conversation));
       setLoaded(true);
-      if (event.type !== "message") return;
       if (conversation.id === currentId.current) setVisitorTyping(false);
       setCurrent((open) => {
         if (!open || open.id !== conversation.id) return open;
+        if (event.type !== "message") return { ...open, ...conversation, messages: open.messages };
         const messages = mergeMessages(open.messages ?? [], [event.message]);
         return { ...conversation, messages };
       });
@@ -160,7 +173,7 @@ export function Inbox({ me }: { me: Account | null }) {
   async function send(event: FormEvent) {
     event.preventDefault();
     const file = pendingFile;
-    if (!current || sending || (!reply.trim() && !file)) return;
+    if (!current || sending || !current.assigneeName || (!reply.trim() && !file)) return;
     if (file && file.size > UPLOAD_MAX_BYTES) {
       alert("Files can be up to 50 MB.");
       return;
@@ -279,14 +292,9 @@ export function Inbox({ me }: { me: Account | null }) {
             <span className="muted">Select a conversation.</span>
           )}
           <span className="spacer" />
-          {current?.identifier || current ? (
+          {current ? (
             <span className="thread-actions">
-              {current?.identifier ? (
-                <button className="btn btn-outline btn-sm" type="button" onClick={() => openVisitor(current.identifier!)}>
-                  User card
-                </button>
-              ) : null}
-              {current && current.status !== "closed" ? (
+              {current.status !== "closed" ? (
                 <button className="btn btn-primary btn-sm" type="button" onClick={assign} disabled={mine || assigning}>
                   {mine ? "Assigned to you" : current.assigneeName ? "Reassign to me" : "Assign to me"}
                 </button>
@@ -315,44 +323,15 @@ export function Inbox({ me }: { me: Account | null }) {
             </div>
           </div>
         ) : null}
-        {visitor ? (
-          <aside className="visitor-card">
-            <header>
-              <div className="grow">
-                <p className="kicker">{visitor === "loading" || visitor === "error" ? "Visitor" : visitor.identifier}</p>
-                <h2>{visitor === "loading" ? "Loading…" : visitor === "error" ? "Unavailable" : visitor.name || "Visitor"}</h2>
-              </div>
-              <button className="btn btn-outline btn-sm" type="button" onClick={() => setVisitor(null)}>Close</button>
-            </header>
-            {visitor !== "loading" && visitor !== "error" ? (
-              <>
-                <dl>
-                  <dt>Email</dt><dd>{visitor.email || "—"}</dd>
-                  <dt>Conversations</dt>
-                  <dd>{visitor.conversationCount}{visitor.openCount ? ` · ${visitor.openCount} open` : ""}</dd>
-                  <dt>First seen</dt><dd>{formatMessageTime(visitor.firstSeenAt) || visitor.firstSeenAt}</dd>
-                  <dt>Last seen</dt><dd>{formatMessageTime(visitor.lastSeenAt) || visitor.lastSeenAt}</dd>
-                  {Object.entries(visitor.metadata || {}).map(([key, value]) => (
-                    <span key={key} style={{ display: "contents" }}>
-                      <dt>{key}</dt><dd>{value || "—"}</dd>
-                    </span>
-                  ))}
-                </dl>
-                <div className="visitor-threads">
-                  {visitor.conversations.map((conversation) => (
-                    <button key={conversation.id} type="button" onClick={() => openConversation(conversation.id)}>
-                      <span>{topicLabel(conversation) || conversation.status}</span>
-                      <span>{formatMessageTime(conversation.updatedAt) || conversation.id}</span>
-                    </button>
-                  ))}
-                </div>
-              </>
-            ) : visitor === "error" ? (
-              <p className="muted">Could not load this visitor.</p>
-            ) : null}
-          </aside>
-        ) : null}
         {current && pages.length > 0 ? <PageTrail pages={pages} now={now} /> : null}
+        {current && current.status !== "closed" && !current.assigneeName ? (
+          <div className="assign-gate">
+            <button className="btn btn-primary" type="button" onClick={assign} disabled={assigning}>
+              {assigning ? "Assigning…" : "Assign to me"}
+            </button>
+            <p className="muted">Assign this ticket before you reply.</p>
+          </div>
+        ) : null}
         <div id="messages">
           {current?.messages?.length ? (
             current.messages.map((message, index) => (
@@ -384,11 +363,11 @@ export function Inbox({ me }: { me: Account | null }) {
             </div>
           ) : null}
           <div className="composer-row">
-            <label className={`btn btn-outline btn-sm attach${current?.status === "closed" ? " is-disabled" : ""}`}>
+            <label className={`btn btn-outline btn-sm attach${current?.status === "closed" || (current && !current.assigneeName) ? " is-disabled" : ""}`}>
               Attach
               <input
                 type="file"
-                disabled={sending || current?.status === "closed"}
+                disabled={sending || current?.status === "closed" || (current ? !current.assigneeName : false)}
                 onChange={(event) => {
                   const file = event.target.files?.[0] ?? null;
                   if (file && file.size > UPLOAD_MAX_BYTES) alert("Files can be up to 50 MB.");
@@ -402,12 +381,12 @@ export function Inbox({ me }: { me: Account | null }) {
               rows={2}
               placeholder={current?.status === "closed" ? "This conversation has ended" : "Reply as an agent…"}
               value={reply}
-              disabled={sending || current?.status === "closed"}
+              disabled={sending || current?.status === "closed" || (current ? !current.assigneeName : false)}
               onChange={(event) => {
                 const value = event.target.value;
                 setReply(value);
                 const id = current?.id;
-                if (!id || current?.status === "closed") return;
+                if (!id || current?.status === "closed" || !current.assigneeName) return;
                 if (!value.trim()) {
                   window.clearTimeout(typingStop.current);
                   sendDeskTyping(socketRef.current, id, false);
@@ -424,12 +403,63 @@ export function Inbox({ me }: { me: Account | null }) {
                 }
               }}
             />
-            <button className="btn btn-primary" type="submit" disabled={sending || current?.status === "closed" || (!reply.trim() && !pendingFile)}>
+            <button className="btn btn-primary" type="submit" disabled={sending || current?.status === "closed" || !current?.assigneeName || (!reply.trim() && !pendingFile)}>
               {sending ? "Sending" : "Send"}
             </button>
           </div>
         </form>
       </section>
+      {current ? (
+        <aside className="visitor-card">
+          <header>
+            <div className="grow">
+              <p className="kicker">{visitor === "loading" || visitor === "error" || !visitor ? "Visitor" : visitor.identifier}</p>
+              <h2>{visitor === "loading" || !visitor ? "Loading…" : visitor === "error" ? "Unavailable" : visitor.name || "Visitor"}</h2>
+            </div>
+          </header>
+          {visitor && visitor !== "loading" && visitor !== "error" ? (
+            <>
+              <dl>
+                <dt>Name</dt><dd>{visitor.name || "—"}</dd>
+                <dt>Email</dt><dd>{visitor.email || "—"}</dd>
+                <dt>Conversations</dt>
+                <dd>{visitor.conversationCount}{visitor.openCount ? ` · ${visitor.openCount} open` : ""}</dd>
+                <dt>First seen</dt><dd>{formatMessageTime(visitor.firstSeenAt) || visitor.firstSeenAt}</dd>
+                <dt>Last seen</dt><dd>{formatMessageTime(visitor.lastSeenAt) || visitor.lastSeenAt}</dd>
+              </dl>
+              <section className="visitor-meta">
+                <p className="kicker">From the client</p>
+                {clientMetadata(visitor).length > 0 ? (
+                  <dl>
+                    {clientMetadata(visitor).map(([key, value]) => (
+                      <span key={key} style={{ display: "contents" }}>
+                        <dt>{metadataLabel(key)}</dt><dd>{value || "—"}</dd>
+                      </span>
+                    ))}
+                  </dl>
+                ) : (
+                  <p className="muted">Nothing else was sent with this visitor.</p>
+                )}
+              </section>
+              <div className="visitor-threads">
+                {visitor.conversations.map((conversation) => (
+                  <button
+                    key={conversation.id}
+                    type="button"
+                    className={conversation.id === current.id ? "is-current" : undefined}
+                    onClick={() => openConversation(conversation.id)}
+                  >
+                    <span>{topicLabel(conversation) || conversation.status}</span>
+                    <span>{formatMessageTime(conversation.updatedAt) || conversation.id}</span>
+                  </button>
+                ))}
+              </div>
+            </>
+          ) : visitor === "error" ? (
+            <p className="muted">Could not load this visitor.</p>
+          ) : null}
+        </aside>
+      ) : null}
     </div>
   );
 }
@@ -484,6 +514,37 @@ function mergeMessages(current: Message[], incoming: Message[]): Message[] {
   return [...byId.values()].sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
 }
 
+/** Desk flags, not details the embedding app sent about the person. */
+const INTERNAL_METADATA = new Set(["handler", "offline", "topic"]);
+
+function clientMetadata(visitor: VisitorCard): Array<[string, string]> {
+  return Object.entries(visitor.metadata || {})
+    .filter(([key, value]) => !INTERNAL_METADATA.has(key) && value.trim())
+    .sort(([a], [b]) => a.localeCompare(b));
+}
+
+function metadataLabel(key: string): string {
+  return key
+    .replace(/[_-]+/g, " ")
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .trim();
+}
+
+/** The user card for a chat that has no identifier yet. */
+function visitorFromConversation(conversation: Conversation): VisitorCard {
+  return {
+    identifier: conversation.id,
+    name: conversation.visitorName,
+    email: conversation.visitorEmail,
+    metadata: conversation.metadata ?? {},
+    conversationCount: 1,
+    openCount: conversation.status === "open" ? 1 : 0,
+    firstSeenAt: conversation.createdAt,
+    lastSeenAt: conversation.updatedAt,
+    conversations: [conversation],
+  };
+}
+
 function topicLabel(conversation: Conversation): string {
   return conversation.metadata?.topic?.trim() ?? "";
 }
@@ -501,7 +562,8 @@ function splitQueues(conversations: Conversation[]): { needsYou: Conversation[];
   for (const conversation of conversations) {
     if (conversation.status === "closed") done.push(conversation);
     else if (isAiChat(conversation)) ai.push(conversation);
-    else if (!conversation.assigneeName || conversation.unreadForAgent > 0 || conversation.metadata?.offline === "true") needsYou.push(conversation);
+    else if (conversation.metadata?.offline === "true") continue;
+    else if (!conversation.assigneeName || conversation.unreadForAgent > 0) needsYou.push(conversation);
     else open.push(conversation);
   }
   return { needsYou, ai, open, done };
@@ -584,8 +646,8 @@ function ConversationRow({
   onOpen: () => void;
 }) {
   const ai = isAiChat(conversation);
-  const waiting = !ai && conversation.status !== "closed" && (!conversation.assigneeName || conversation.unreadForAgent > 0 || conversation.metadata?.offline === "true");
-  const subject = topicLabel(conversation) || (conversation.metadata?.offline === "true" ? "Left a message" : conversation.metadata?.handler === "ai" ? "AI chat" : "Live chat");
+  const waiting = !ai && conversation.status !== "closed" && (!conversation.assigneeName || conversation.unreadForAgent > 0);
+  const subject = topicLabel(conversation) || (conversation.metadata?.handler === "ai" ? "AI chat" : "Live chat");
   const when = formatMessageTime(conversation.updatedAt);
   return (
     <button type="button" className={["item", active ? "active" : "", waiting ? "is-waiting" : ""].filter(Boolean).join(" ")} onClick={onOpen}>

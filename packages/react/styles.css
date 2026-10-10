@@ -1,0 +1,3 @@
+/* Subpath entry so bundlers that alias "@open-support/react" to this folder
+   still resolve "@open-support/react/styles.css". The built sheet lives in dist. */
+@import "./dist/styles.css";

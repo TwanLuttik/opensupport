@@ -39,6 +39,8 @@ const patchConversationSchema = z.object({
   status: z.enum(["open", "closed"]).optional(),
   visitorName: z.string().trim().min(1).max(80).nullable().optional(),
   visitorEmail: z.string().trim().email().max(160).nullable().optional(),
+  /** Only offline messages can be resolved. Omit it to leave the mark alone. */
+  resolved: z.boolean().optional(),
 });
 
 const tokenSchema = z.object({
@@ -442,9 +444,17 @@ export function createApp(config: ServerConfig): SupportApp {
       createdAt: new Date().toISOString(),
       data: { conversation, message },
     };
-    void deliverEvent(store, currentSettings(), event).catch((error) => {
+    void deliverEvent(store, currentSettings(), event, { dashboardOrigin: publicOrigin() }).catch((error) => {
       console.error("[open-support] notification failed", error);
     });
+  }
+
+  /** Origin visitors and agents use to reach this process. PUBLIC_URL wins over the listen address. */
+  function publicOrigin(): string | undefined {
+    const configured = process.env.PUBLIC_URL?.trim();
+    if (configured) return configured.replace(/\/+$/, "");
+    const host = config.host === "0.0.0.0" || config.host === "::" ? "localhost" : config.host;
+    return `http://${host}:${config.port}`;
   }
 
   function requireInbox(req: IncomingMessage, res: ServerResponse): boolean {
@@ -757,10 +767,14 @@ export function createApp(config: ServerConfig): SupportApp {
       if (widgetClose && req.method === "PATCH") {
         const conversation = authorizeVisitor(store, widgetClose[1]!, visitorToken(req), res);
         if (!conversation) return;
-        const body = await readJson(req, z.object({ status: z.literal("closed") }));
-        const updated = store.updateConversation(conversation.id, { status: body.status });
-        if (updated) publishConversation(updated.id);
-        send(res, 200, { conversation: updated });
+        const before = store.listMessages(conversation.id).messages.at(-1)?.id;
+        await readJson(req, z.object({ status: z.literal("closed") }));
+        const ended = store.endConversation(conversation.id, null);
+        const thread = store.getConversationWithMessages(conversation.id);
+        const notice = thread?.messages.at(-1);
+        if (ended && notice && notice.id !== before) publishMessage(ended.id, notice.id);
+        else if (ended) publishConversation(ended.id);
+        send(res, 200, { conversation: thread });
         return;
       }
 
@@ -1218,6 +1232,7 @@ export function createApp(config: ServerConfig): SupportApp {
                 ratedAt: null,
                 visitorReadAt: null,
                 agentReadAt: null,
+                resolvedAt: null,
                 metadata: {},
                 unreadForAgent: 0,
                 seq: 0,
@@ -1390,6 +1405,17 @@ export function createApp(config: ServerConfig): SupportApp {
         if (!requireInbox(req, res)) return;
         const body = await readJson(req, patchConversationSchema);
         const conversationId = conversationPath[1]!;
+        if (body.resolved !== undefined) {
+          const resolved = store.setResolved(conversationId, body.resolved);
+          if (!resolved) {
+            const known = store.getConversation(conversationId);
+            send(res, known ? 400 : 404, { error: known ? "Only an offline message can be resolved" : "Conversation not found" });
+            return;
+          }
+          publishConversation(resolved.id);
+          send(res, 200, { conversation: store.getConversationWithMessages(resolved.id) });
+          return;
+        }
         if (body.status === "closed") {
           const account = sessionAccount(req);
           const ended = store.endConversation(conversationId, account?.name ?? null);
@@ -1472,6 +1498,15 @@ export function createApp(config: ServerConfig): SupportApp {
           send(res, 404, { error: "Conversation not found" });
           return;
         }
+        const conversation = store.getConversation(conversationId);
+        if (!conversation) {
+          send(res, 404, { error: "Conversation not found" });
+          return;
+        }
+        if (!conversation.assigneeId && !conversation.assigneeName) {
+          send(res, 409, { error: "Assign this ticket before you reply" });
+          return;
+        }
         const body = await readJson(req, agentMessageSchema);
         try {
           const message = store.addMessage(conversationId, {
@@ -1519,6 +1554,8 @@ export function createApp(config: ServerConfig): SupportApp {
         if (
           path === "/" ||
           path === "/inbox" ||
+          path.startsWith("/inbox/") ||
+          path === "/messages" ||
           (DASHBOARD_PAGES as readonly string[]).includes(path) ||
           path.startsWith("/settings/")
         ) {

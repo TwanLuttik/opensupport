@@ -101,6 +101,20 @@ test("a live socket delivers an agent reply to the visitor and a visitor message
     await visitor.opened;
     await desk.opened;
 
+    const unassigned = await fetch(`${base}/api/conversations/${session.conversation.id}/messages`, {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({ body: "Looking now", agentName: "Sam" }),
+    });
+    assert.equal(unassigned.status, 409);
+
+    const claimed = await fetch(`${base}/api/conversations/${session.conversation.id}/assign`, {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({ agentName: "Sam" }),
+    });
+    assert.equal(claimed.status, 200);
+
     await fetch(`${base}/api/conversations/${session.conversation.id}/messages`, {
       method: "POST",
       headers: { "content-type": "application/json", cookie },
@@ -221,6 +235,20 @@ test("widget flow and token API", async () => {
     assert.equal(page.conversations.length, 1);
     assert.equal(page.conversations[0]?.unreadForAgent, 1);
 
+    const unassignedReply = await fetch(`${base}/api/conversations/${session.conversation.id}/messages`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+      body: JSON.stringify({ body: "Looking now", agentName: "Sam" }),
+    });
+    assert.equal(unassignedReply.status, 409);
+
+    const claimed = await fetch(`${base}/api/conversations/${session.conversation.id}/assign`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+      body: JSON.stringify({ agentName: "Sam" }),
+    });
+    assert.equal(claimed.status, 200);
+
     const reply = await fetch(`${base}/api/conversations/${session.conversation.id}/messages`, {
       method: "POST",
       headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
@@ -235,10 +263,10 @@ test("widget flow and token API", async () => {
       conversation: { assigneeName: string | null };
       messages: Array<{ body: string }>;
     };
-    assert.equal(thread.conversation.assigneeName, null);
+    assert.equal(thread.conversation.assigneeName, "Sam");
     assert.deepEqual(
       thread.messages.map((message) => message.body),
-      ["Hi! How can we help?", "Waiting for an agent", "The checkout button is broken", "Looking now"],
+      ["Hi! How can we help?", "Waiting for an agent", "The checkout button is broken", "Sam joined the conversation", "Looking now"],
     );
 
     const png = Buffer.from(
@@ -326,7 +354,9 @@ test("widget flow and token API", async () => {
       body: JSON.stringify({ status: "closed" }),
     });
     assert.equal(ended.status, 200);
-    assert.equal(((await ended.json()) as { conversation: { status: string } }).conversation.status, "closed");
+    const endedBody = (await ended.json()) as { conversation: { status: string; messages: Array<{ body: string }> } };
+    assert.equal(endedBody.conversation.status, "closed");
+    assert.equal(endedBody.conversation.messages.at(-1)?.body, "The visitor ended the conversation");
 
     const tooSoon = await fetch(`${base}/api/widget/conversations/${visitorSession.conversation.id}/rating`, {
       method: "POST",
@@ -966,6 +996,32 @@ test("outside open hours a visitor leaves an email ticket instead of a live chat
     assert.equal(chat.conversation.metadata.handler, "ai");
     assert.equal(chat.conversation.metadata.offline, undefined);
     assert.equal(chat.messages.at(-1)?.body, "Ada Bot joined the conversation");
+
+    const refused = await fetch(`${base}/api/conversations/${chat.conversation.id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json", cookie: cookie! },
+      body: JSON.stringify({ resolved: true }),
+    });
+    assert.equal(refused.status, 400);
+    const listed = await fetch(`${base}/api/conversations`, { headers: { cookie: cookie! } });
+    const offline = ((await listed.json()) as { conversations: Array<{ id: string; resolvedAt: string | null; metadata: { offline?: string } }> }).conversations.find(
+      (conversation) => conversation.metadata.offline === "true",
+    );
+    assert.ok(offline);
+    assert.equal(offline?.resolvedAt, null);
+    const resolved = await fetch(`${base}/api/conversations/${offline!.id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json", cookie: cookie! },
+      body: JSON.stringify({ resolved: true }),
+    });
+    assert.equal(resolved.status, 200);
+    assert.ok(((await resolved.json()) as { conversation: { resolvedAt: string | null } }).conversation.resolvedAt);
+    const reopened = await fetch(`${base}/api/conversations/${offline!.id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json", cookie: cookie! },
+      body: JSON.stringify({ resolved: false }),
+    });
+    assert.equal(((await reopened.json()) as { conversation: { resolvedAt: string | null } }).conversation.resolvedAt, null);
   } finally {
     await app.close();
   }

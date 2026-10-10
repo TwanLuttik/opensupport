@@ -86,7 +86,7 @@ function DeskDocs() {
           <li><strong>AI models</strong> saves an OpenAI key, picks the model, names the agent, and can limit how often one address may ask.</li>
           <li><strong>AI agent</strong> is the knowledge the model answers from, plus client actions the visitor's page can answer with a button. See the React page for how those buttons are wired.</li>
           <li><strong>Access</strong> lists the sites allowed to embed the bubble. The desk itself is always allowed, so saving a site here cannot lock you out.</li>
-          <li><strong>Notifications</strong> posts events to a webhook or Telegram, and mints API tokens for the SDK.</li>
+          <li><strong>Notifications</strong> posts events to a webhook or Telegram, and mints API tokens for the SDK. A new-conversation Telegram includes a link that opens that thread in the inbox.</li>
         </ul>
       </section>
       <section className="panel">
@@ -375,6 +375,7 @@ pnpm dev:server`}</pre>
             <tr><td><code>UPLOAD_DIR</code></td><td><code>./data/uploads</code></td><td>Attachments, logos, and profile pictures</td></tr>
             <tr><td><code>CORS_ORIGIN</code></td><td><code>*</code></td><td>Sites allowed to embed the bubble, until Access is saved</td></tr>
             <tr><td><code>ADMIN_KEY</code></td><td>generated once</td><td>Recovery sign-in. Set it so it stays the same</td></tr>
+            <tr><td><code>PUBLIC_URL</code></td><td>the listen address</td><td>Public origin used in Telegram links, such as <code>https://support.example.com</code></td></tr>
             <tr><td><code>WIDGET_TITLE</code></td><td><code>Support</code></td><td>Bubble title, until Settings is saved</td></tr>
             <tr><td><code>WIDGET_ACCENT</code></td><td><code>#111827</code></td><td>Bubble accent until a theme is saved</td></tr>
             <tr><td><code>WIDGET_GREETING</code></td><td><code>Hi! How can we help?</code></td><td>First line of a new chat</td></tr>
@@ -384,7 +385,7 @@ pnpm dev:server`}</pre>
       </section>
       <section className="panel">
         <h3>Railway</h3>
-        <p>One service runs the API and the dashboard. Add a volume mounted at <code>/data</code>, then set <code>DATABASE_PATH=/data/support.db</code>, <code>UPLOAD_DIR=/data/uploads</code>, <code>ADMIN_KEY</code>, and <code>CORS_ORIGIN</code> to the sites that embed the bubble. Health check path: <code>/health</code>.</p>
+        <p>One service runs the API and the dashboard. Add a volume mounted at <code>/data</code>, then set <code>DATABASE_PATH=/data/support.db</code>, <code>UPLOAD_DIR=/data/uploads</code>, <code>ADMIN_KEY</code>, <code>PUBLIC_URL</code> to the public origin, and <code>CORS_ORIGIN</code> to the sites that embed the bubble. Health check path: <code>/health</code>.</p>
         <p>Without the volume, conversations, uploads, and sessions disappear on the next deploy. Without <code>ADMIN_KEY</code>, the recovery key changes on every restart.</p>
       </section>
     </DocPage>

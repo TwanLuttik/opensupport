@@ -1,10 +1,18 @@
 import { useEffect, useState } from "react";
-import { NavLink, Navigate, Route, Routes, useNavigate } from "react-router-dom";
+import { NavLink, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
+import { Mail } from "lucide-react";
 import { api } from "./api.js";
 import { AccountPage } from "./Account.js";
 import { Docs } from "./Docs.js";
 import { Hours } from "./Hours.js";
 import { Inbox } from "./Inbox.js";
+import { Messages, offlineAttention } from "./Messages.js";
+import { connectDesk } from "./live.js";
+import type { Conversation } from "./types.js";
+
+function isOffline(conversation: Conversation): boolean {
+  return conversation.metadata?.offline === "true";
+}
 import { Login } from "./Login.js";
 import { Reviews } from "./Reviews.js";
 import { Settings } from "./Settings.js";
@@ -42,12 +50,14 @@ function initials(name: string): string {
 export function App() {
   const theme = useTheme();
   const navigate = useNavigate();
+  const location = useLocation();
   const [ready, setReady] = useState(false);
   const [mode, setMode] = useState<LoginMode>("email");
   const [signedIn, setSignedIn] = useState(false);
   const [me, setMe] = useState<Account | null>(null);
   const [adminKey, setAdminKey] = useState(() => sessionStorage.getItem("osb_admin") || "");
   const [presenceBusy, setPresenceBusy] = useState(false);
+  const [messageCount, setMessageCount] = useState(0);
 
   useEffect(() => {
     api<SessionResponse>("/api/dashboard/session")
@@ -63,6 +73,48 @@ export function App() {
       .catch(() => {})
       .finally(() => setReady(true));
   }, []);
+
+  useEffect(() => {
+    if (!signedIn) return;
+    let stopped = false;
+    const known = new Map<string, Conversation>();
+    const recount = () => {
+      if (!stopped) setMessageCount(offlineAttention([...known.values()]));
+    };
+    api<{ conversations: Conversation[] }>("/api/conversations")
+      .then((data) => {
+        if (stopped) return;
+        known.clear();
+        for (const conversation of data.conversations) {
+          if (isOffline(conversation)) known.set(conversation.id, conversation);
+        }
+        recount();
+      })
+      .catch(() => {});
+    const stop = connectDesk((event) => {
+      if (event.type !== "conversation" && event.type !== "message" && event.type !== "read") return;
+      if (event.type === "read") {
+        const current = known.get(event.conversationId);
+        if (!current || event.role !== "agent") return;
+        known.set(event.conversationId, { ...current, agentReadAt: event.readAt, unreadForAgent: 0 });
+        recount();
+        return;
+      }
+      if (!isOffline(event.conversation)) {
+        if (known.delete(event.conversation.id)) recount();
+        return;
+      }
+      const current = known.get(event.conversation.id);
+      known.set(event.conversation.id, event.type === "message"
+        ? { ...event.conversation, messages: current?.messages }
+        : { ...current, ...event.conversation, messages: current?.messages });
+      recount();
+    });
+    return () => {
+      stopped = true;
+      stop();
+    };
+  }, [signedIn, location.pathname]);
 
   useEffect(() => {
     if (!signedIn || !me) return;
@@ -166,6 +218,10 @@ export function App() {
               </button>
             </div>
           ) : null}
+          <NavLink className="btn btn-outline btn-icon mail-link" to="/messages" aria-label={messageCount ? `Messages, ${messageCount} unresolved` : "Messages"}>
+            <Mail size={16} strokeWidth={1.75} />
+            {messageCount > 0 ? <span className="mail-badge">{messageCount > 9 ? "9+" : messageCount}</span> : null}
+          </NavLink>
           {me ? <ProfileLink me={me} /> : <span className="who">Admin key</span>}
           <ThemeButton theme={theme} />
           <button className="btn btn-outline" type="button" onClick={signOut}>Sign out</button>
@@ -175,7 +231,8 @@ export function App() {
         <Routes>
           <Route path="/" element={<Navigate to="/inbox" replace />} />
           <Route path="/dashboard" element={<Navigate to="/inbox" replace />} />
-          <Route path="/inbox" element={<Inbox me={me} />} />
+          <Route path="/inbox/:conversationId?" element={<Inbox me={me} />} />
+          <Route path="/messages" element={<Messages />} />
           <Route path="/settings/*" element={<Settings key={adminKey} adminKey={adminKey} canManage={canManage} />} />
           <Route path="/hours" element={<Hours />} />
           <Route path="/account" element={me ? <AccountPage me={me} onChange={setMe} /> : <Navigate to="/inbox" replace />} />

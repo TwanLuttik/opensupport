@@ -1,6 +1,6 @@
 {
   "name": "@open-support/react",
-  "version": "0.1.6",
+  "version": "0.1.8",
   "description": "React chat bubble that floats in the bottom-left and talks to an Open Support server.",
   "type": "module",
   "main": "./dist/index.js",
@@ -21,6 +21,8 @@
   },
   "files": [
     "dist",
+    "next.js",
+    "styles.css",
     "LICENSE",
     "README.md"
   ],

@@ -176,6 +176,7 @@ function rowToConversation(row: Record<string, unknown>): Conversation {
     ratedAt: row.rated_at ? String(row.rated_at) : null,
     visitorReadAt: row.visitor_read_at ? String(row.visitor_read_at) : null,
     agentReadAt: row.agent_read_at ? String(row.agent_read_at) : null,
+    resolvedAt: row.resolved_at ? String(row.resolved_at) : null,
   };
 }
 
@@ -238,6 +239,7 @@ export class SupportStore {
     this.ensureColumn("conversations", "accepted_at", "TEXT");
     this.ensureColumn("conversations", "visitor_read_at", "TEXT");
     this.ensureColumn("conversations", "agent_read_at", "TEXT");
+    this.ensureColumn("conversations", "resolved_at", "TEXT");
     this.ensureColumn("accounts", "avatar_url", "TEXT");
     this.ensureColumn("accounts", "presence", "TEXT NOT NULL DEFAULT 'online'");
     this.ensureColumn("accounts", "last_seen_at", "TEXT");
@@ -606,14 +608,27 @@ export class SupportStore {
   }
 
   /**
-   * Ends a live chat from the desk. The visitor sees who ended it, and can no longer reply.
-   * Closing again is a no-op so a second click does not post another line.
+   * Marks an offline message finished, or puts it back in the unresolved pile.
+   * Live chats are not tracked this way.
+   */
+  setResolved(id: string, resolved: boolean): Conversation | null {
+    const current = this.getConversation(id);
+    if (!current || current.metadata.offline !== "true") return null;
+    this.db
+      .prepare("UPDATE conversations SET resolved_at = ?, updated_at = ? WHERE id = ?")
+      .run(resolved ? nowIso() : null, nowIso(), id);
+    return this.getConversation(id);
+  }
+
+  /**
+   * Ends a live chat. The visitor sees who ended it, and can no longer reply.
+   * A null name means the visitor ended it. Closing again posts no second line.
    */
   endConversation(id: string, agentName?: string | null): Conversation | null {
     const current = this.getConversation(id);
     if (!current) return null;
     if (current.status === "closed") return current;
-    const who = agentName?.trim() || current.assigneeName?.trim() || "An agent";
+    const who = agentName === null ? "The visitor" : agentName?.trim() || current.assigneeName?.trim() || "An agent";
     this.addMessage(id, { role: "system", body: `${who} ended the conversation`, agentName: who });
     return this.updateConversation(id, { status: "closed" });
   }

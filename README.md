@@ -46,6 +46,7 @@ On first boot without `ADMIN_KEY`, a one-time admin key is printed. Set `ADMIN_K
 | `WIDGET_GREETING` | `Hi! How can we help?` | First system message |
 | `WIDGET_PLACEHOLDER` | `Write a message…` | Composer placeholder |
 | `COOKIE_SECURE` | from the request | `1` forces the `Secure` session cookie. `0` leaves it off. HTTPS proxies, including Railway, are detected from `X-Forwarded-Proto` |
+| `PUBLIC_URL` | the listen address | Public origin of this desk. New-conversation Telegram messages link to `PUBLIC_URL/inbox/<id>` |
 
 ## Deploy on Railway
 
@@ -59,6 +60,7 @@ The container disk is wiped on every deploy. Add a volume mounted at `/data`. Ra
 | `UPLOAD_DIR` | `/data/uploads` |
 | `ADMIN_KEY` | a long random secret you keep |
 | `CORS_ORIGIN` | the sites that embed the bubble, comma-separated |
+| `PUBLIC_URL` | the public origin of this desk, such as `https://support.example.com` |
 
 Health check path: `/health`.
 
@@ -77,7 +79,7 @@ The admin key (`ADMIN_KEY`, or the key printed on first boot) still signs in. Us
 - **Pre-chat form** asks the visitor to fill in fields you define (text, email, long text, or a dropdown) before a conversation starts. Turn it on from Settings. Answers are stored on the ticket. A field id of `name` or `email` also sets the visitor name or email.
 - **Access** sets the browser origins allowed to embed the widget (`*` or a comma-separated list). This overrides `CORS_ORIGIN` once you save. The dashboard is always allowed, so the desk stays reachable after you save a site that is not this host.
 - **Webhooks** POST JSON to your URL for `conversation.created` and `message.created`. The signing secret is shown once. Requests include `X-Open-Support-Signature: sha256=<hmac of the raw body>`.
-- **Telegram** sends those events to a bot chat. Reply to the notification in Telegram and the text is posted back to the visitor. The message you reply to must still contain the `cnv_…` id.
+- **Telegram** sends those events to a bot chat. A new conversation includes a link that opens that thread in the inbox. Set `PUBLIC_URL` to the public origin, such as `https://support.example.com`, so the link points at the hosted desk. Reply to the notification in Telegram and the text is posted back to the visitor. The message you reply to must still contain the `cnv_…` id.
 - **AI models** saves an OpenAI API key and picks the model. The key stays on the server.
 - **AI agent** is extra knowledge the model uses to answer, plus client actions. Each action has a number and a description of what the visitor's page can look up. That description is added to the prompt. When a reply needs it, the model ends with `%%[1,2]%%`. The bubble shows buttons for those numbers, and the embedding app decides the label and the text the click sends. When the agent is enabled, the bubble lets a visitor chat with it instead of waiting for a person.
 - **API tokens** are minted for external apps. The plaintext token is shown once.
@@ -232,6 +234,22 @@ The command writes a `link:` dependency into the app:
 ```
 
 That path is relative to the app. After you change the widget, run `pnpm --filter @open-support/react build` again in this repo. The app follows the link and does not need another install.
+
+Next.js with Turbopack will not follow that link when the checkout sits outside `turbopack.root`. The error is `Module not found: Can't resolve '@open-support/react/next'`, and the detail says the symlink points out of the filesystem root. A copy inside the app, or an alias to one, goes stale on the next rebuild. Widen the root so it contains both the app and this checkout, then delete any alias. The package `exports` resolve `@open-support/react/next` and `@open-support/react/styles.css` from `dist/`.
+
+```ts
+// next.config.ts
+import os from "os";
+import path from "path";
+
+const nextConfig = {
+  turbopack: {
+    root: path.join(os.homedir()),
+  },
+};
+```
+
+Set `root` to the nearest directory that contains both trees if that is not your home directory. After changing the widget, run `pnpm --filter @open-support/react build` again. Do not alias `@open-support/react` to a folder or to `dist/index.js`: that alias skips `exports`, so the `/next` subpath stops resolving.
 
 To stop using the link, delete the dependency and run `pnpm install`.
 

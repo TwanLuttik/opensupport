@@ -22,6 +22,8 @@ export interface DeliveryResult {
 export interface DeliveryDeps {
   fetchImpl?: typeof fetch;
   now?: () => Date;
+  /** Public origin of this desk, such as https://support.example.com. No trailing slash. */
+  dashboardOrigin?: string;
 }
 
 const TELEGRAM_OFFSET_KEY = "telegram:offset";
@@ -49,7 +51,12 @@ export async function deliverEvent(
     settings.telegram.notifyOn.includes(event.type)
   ) {
     results.push(
-      await postTelegram(fetchImpl, settings.telegram.botToken, settings.telegram.chatId, formatTelegram(event)),
+      await postTelegram(
+        fetchImpl,
+        settings.telegram.botToken,
+        settings.telegram.chatId,
+        formatTelegram(event, deps.dashboardOrigin),
+      ),
     );
   }
 
@@ -82,14 +89,22 @@ async function postWebhook(
   }
 }
 
-export function formatTelegram(event: NotifyPayload): string {
+/** Desk URL that opens this conversation. The id stays on its own line so a Telegram reply can still quote it. */
+export function conversationLink(origin: string, conversationId: string): string {
+  const base = origin.replace(/\/+$/, "");
+  return `${base}/inbox/${encodeURIComponent(conversationId)}`;
+}
+
+export function formatTelegram(event: NotifyPayload, dashboardOrigin?: string): string {
   const who = event.data.conversation.visitorName || event.data.conversation.visitorEmail || "Visitor";
   const body = event.data.message?.body ?? "";
+  const id = event.data.conversation.id;
+  const link = dashboardOrigin ? conversationLink(dashboardOrigin, id) : "";
   if (event.type === "conversation.created") {
-    return `New conversation from ${who}\n${event.data.conversation.id}`;
+    return link ? `New conversation from ${who}\n${link}\n\n${id}` : `New conversation from ${who}\n${id}`;
   }
   const role = event.data.message?.role ?? "visitor";
-  return `${who} (${role})\n${body}\n\nReply to this chat to respond.\n${event.data.conversation.id}`;
+  return `${who} (${role})\n${body}\n\nReply to this chat to respond.\n${id}`;
 }
 
 async function postTelegram(
@@ -103,7 +118,11 @@ async function postTelegram(
     const response = await fetchImpl(`https://api.telegram.org/bot${botToken}/sendMessage`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ chat_id: chatId, text: text.slice(0, 4000) }),
+      body: JSON.stringify({
+        chat_id: chatId,
+        text: text.slice(0, 4000),
+        disable_web_page_preview: true,
+      }),
     });
     const payload = (await response.json().catch(() => ({}))) as { ok?: boolean; description?: string };
     return {
@@ -155,8 +174,9 @@ export async function pollTelegram(store: SupportStore, settings: ServerSettings
     const quoted = update.message?.reply_to_message?.text ?? "";
     const match = quoted.match(/cnv_[a-f0-9]+/);
     const conversationId = match?.[0];
-    if (!conversationId || !store.getConversation(conversationId)) continue;
-    store.addMessage(conversationId, { role: "agent", body: text, agentName: "Telegram" });
+    const conversation = conversationId ? store.getConversation(conversationId) : null;
+    if (!conversation || (!conversation.assigneeId && !conversation.assigneeName)) continue;
+    store.addMessage(conversationId!, { role: "agent", body: text, agentName: "Telegram" });
     handled += 1;
   }
   if (payload.result.length > 0) store.setSecret(TELEGRAM_OFFSET_KEY, String(nextOffset));

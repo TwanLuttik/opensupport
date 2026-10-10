@@ -53,20 +53,12 @@ export function AiUsage() {
   }, []);
 
   if (!usage) {
-    return (
-      <div className="settings">
-        <Status text={error || "Loading AI usage…"} ok={false} />
-      </div>
-    );
+    return <Status text={error || "Loading AI usage…"} ok={false} />;
   }
 
   const quiet = usage.conversations === 0 && usage.replies === 0;
   return (
     <>
-      <section className="panel">
-        <h2>AI</h2>
-        <p className="muted">How often visitors talk to the AI, and what those replies have cost so far.</p>
-      </section>
       <section className="panel">
         <h2>{quiet ? "No AI chats yet" : money(usage.estimatedCostUsd)}</h2>
         <p className="muted">
@@ -78,42 +70,68 @@ export function AiUsage() {
           <Stat label="Chats" value={String(usage.conversations)} hint="Visitors who chose the AI" />
           <Stat label="Questions" value={String(usage.messages)} hint="Messages those visitors sent" />
           <Stat label="Answers" value={String(usage.replies)} hint="Replies the AI wrote back" />
-          <Stat label="Read" value={words(usage.promptTokens)} hint="What the AI looked at, including your knowledge" />
-          <Stat label="Written" value={words(usage.completionTokens)} hint="What the AI wrote in reply" />
-          <Stat label="Cost" value={money(usage.estimatedCostUsd)} hint="Estimate, not your OpenAI invoice" />
+          <Stat label="Read" value={words(usage.promptTokens)} hint="Including your knowledge" />
+          <Stat label="Written" value={words(usage.completionTokens)} hint="What the AI wrote back" />
+          <Stat label="Cost" value={money(usage.estimatedCostUsd)} hint="Estimate, not the invoice" />
         </div>
       </section>
       <section className="panel">
         <h2>By model</h2>
-        {usage.models.length === 0 ? <p className="muted">No answers yet.</p> : null}
-        {usage.models.map((model) => (
-          <div className="hook" key={model.model}>
-            <div>
-              <strong>{modelName(model.model)}</strong>
-              <br />
-              <small className="muted">
-                {model.replies.toLocaleString()} {model.replies === 1 ? "answer" : "answers"} · read {words(model.promptTokens)} · wrote {words(model.completionTokens)}
-              </small>
-            </div>
-            <span className="badge badge-outline">{money(model.estimatedCostUsd)}</span>
-          </div>
-        ))}
+        {usage.models.length === 0 ? (
+          <p className="muted">No answers yet.</p>
+        ) : (
+          <table className="data">
+            <thead>
+              <tr>
+                <th>Model</th>
+                <th className="num">Answers</th>
+                <th className="num">Read</th>
+                <th className="num">Written</th>
+                <th className="num">Cost</th>
+              </tr>
+            </thead>
+            <tbody>
+              {usage.models.map((model) => (
+                <tr key={model.model}>
+                  <td>{modelName(model.model)}</td>
+                  <td className="num">{model.replies.toLocaleString()}</td>
+                  <td className="num">{words(model.promptTokens)}</td>
+                  <td className="num">{words(model.completionTokens)}</td>
+                  <td className="num">{money(model.estimatedCostUsd)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
       </section>
       <section className="panel">
         <h2>Latest answers</h2>
-        {usage.recent.length === 0 ? <p className="muted">Nothing has been answered yet.</p> : null}
-        {usage.recent.map((entry) => (
-          <div className="hook" key={entry.id}>
-            <div>
-              <strong>{modelName(entry.model)}</strong>
-              <br />
-              <small className="muted">
-                {money(entry.estimatedCostUsd)} · read {words(entry.promptTokens)} · wrote {words(entry.completionTokens)}
-              </small>
-            </div>
-            <span className="muted">{formatMessageTime(entry.createdAt) || entry.createdAt}</span>
-          </div>
-        ))}
+        {usage.recent.length === 0 ? (
+          <p className="muted">Nothing has been answered yet.</p>
+        ) : (
+          <table className="data">
+            <thead>
+              <tr>
+                <th>When</th>
+                <th>Model</th>
+                <th className="num">Read</th>
+                <th className="num">Written</th>
+                <th className="num">Cost</th>
+              </tr>
+            </thead>
+            <tbody>
+              {usage.recent.map((entry) => (
+                <tr key={entry.id}>
+                  <td className="nowrap">{formatMessageTime(entry.createdAt) || entry.createdAt}</td>
+                  <td>{modelName(entry.model)}</td>
+                  <td className="num">{words(entry.promptTokens)}</td>
+                  <td className="num">{words(entry.completionTokens)}</td>
+                  <td className="num">{money(entry.estimatedCostUsd)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
       </section>
     </>
   );

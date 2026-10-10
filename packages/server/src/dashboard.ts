@@ -48,6 +48,7 @@ export interface DashboardFile {
 export const DASHBOARD_PAGES = [
   "/",
   "/inbox",
+  "/messages",
   "/settings",
   "/settings/appearance",
   "/settings/start",
@@ -81,7 +82,11 @@ export function dashboardFile(pathname: string): DashboardFile | null {
   const root = dashboardDir();
   if (!root) return null;
   const request = pathname.replace(/\/+$/, "") || "/";
-  const relative = (DASHBOARD_PAGES as readonly string[]).includes(request) ? "index.html" : request.replace(/^\//, "");
+  const appShell =
+    (DASHBOARD_PAGES as readonly string[]).includes(request) ||
+    request.startsWith("/inbox/") ||
+    request.startsWith("/settings/");
+  const relative = appShell ? "index.html" : request.replace(/^\//, "");
   const file = normalize(join(root, relative));
   if (file !== root && !file.startsWith(root + "/")) return null;
   if (!existsSync(file) || !statSync(file).isFile()) return null;

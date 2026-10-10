@@ -69,6 +69,8 @@ export interface Conversation {
    */
   visitorReadAt: string | null;
   agentReadAt: string | null;
+  /** When an offline message was marked done. Null while it still needs attention. */
+  resolvedAt: string | null;
 }
 
 export interface ConversationWithMessages extends Conversation {

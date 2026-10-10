@@ -296,4 +296,6 @@ pnpm link /absolute/path/to/open-support-bubble/packages/react
 
 Quote the path if it contains spaces. Rebuild after edits. The link points at `packages/react`, whose `exports` read `dist/`, so the app picks up the new build without another install.
 
+Turbopack reports `Module not found: Can't resolve '@open-support/react/next'` when this checkout is outside `turbopack.root`. A symlink inside the app does not help: Turbopack follows it and rejects the real path. Set `turbopack.root` to a directory that contains both the app and this checkout, and do not alias the package. Aliasing `@open-support/react` to a folder or to `dist/index.js` skips `exports`, so `/next` and `/styles.css` stop resolving. Rebuild with `pnpm --filter @open-support/react build` after edits. No copy step.
+
 Created by [CoatCheck Technology, Inc.](https://opensupport.dev)

@@ -61,6 +61,7 @@ export interface Conversation {
   rating?: "up" | "down" | "skipped" | null;
   visitorReadAt?: string | null;
   agentReadAt?: string | null;
+  resolvedAt?: string | null;
 }
 
 export interface VisitorCard {

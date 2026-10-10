@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { SupportStore } from "./db.js";
-import { deliverEvent, formatTelegram, pollTelegram, signBody } from "./notify.js";
+import { conversationLink, deliverEvent, formatTelegram, pollTelegram, signBody } from "./notify.js";
 import { defaultSettings } from "./settings.js";
 import type { PublicConfig, ServerSettings } from "./types.js";
 
@@ -69,8 +69,25 @@ test("signs webhook bodies and skips disabled endpoints", async () => {
   store.close();
 });
 
+test("a new conversation telegram includes a link that opens that thread", () => {
+  const { store, created, message } = storeWithConversation();
+  const event = {
+    id: "evt",
+    type: "conversation.created" as const,
+    createdAt: "t",
+    data: { conversation: created.conversation, message },
+  };
+  const text = formatTelegram(event, "https://support.example.com/");
+  assert.match(text, /New conversation from Ada/);
+  const link = conversationLink("https://support.example.com", created.conversation.id);
+  assert.ok(text.includes(`${link}\n\n${created.conversation.id}`));
+  assert.equal(text.trim().endsWith(created.conversation.id), true);
+  store.close();
+});
+
 test("telegram replies quote the conversation id and become agent messages", async () => {
   const { store, created } = storeWithConversation();
+  store.assignConversation(created.conversation.id, { id: null, name: "Telegram" });
   store.setSecret("telegram:offset", "0");
   const settings = defaultSettings(widget, "*");
   settings.telegram = { enabled: true, botToken: "123:abc", chatId: "42", notifyOn: ["message.created"] };

@@ -28,22 +28,19 @@ export function Statistics() {
         <h1>Statistics</h1>
         <p className="muted">How the desk is doing, and what the AI has cost.</p>
       </div>
-      <div className="settings-layout">
-        <nav className="settings-nav" aria-label="Statistics">
-          {SECTIONS.map((section) => (
-            <NavLink key={section.to} to={section.to}>
-              {section.label}
-              <small>{section.hint}</small>
-            </NavLink>
-          ))}
-        </nav>
-        <div className="settings-section">
-          <Routes>
-            <Route index element={<Navigate to="general" replace />} />
-            <Route path="general" element={<GeneralStats />} />
-            <Route path="ai" element={<AiUsage />} />
-          </Routes>
-        </div>
+      <nav className="section-tabs" aria-label="Statistics">
+        {SECTIONS.map((section) => (
+          <NavLink key={section.to} to={section.to}>
+            {section.label}
+          </NavLink>
+        ))}
+      </nav>
+      <div className="settings-section">
+        <Routes>
+          <Route index element={<Navigate to="general" replace />} />
+          <Route path="general" element={<GeneralStats />} />
+          <Route path="ai" element={<AiUsage />} />
+        </Routes>
       </div>
     </div>
   );
@@ -65,37 +62,32 @@ function GeneralStats() {
 
   const votes = stats.ratingUp + stats.ratingDown;
   return (
-    <>
-      <section className="panel">
-        <h2>The desk</h2>
-        <p className="muted">Averages across human chats. AI conversations are not included in the times.</p>
-        <div className="stats">
-          <Stat
-            label="Response time"
-            value={stats.averageResponseSeconds === null ? "—" : duration(stats.averageResponseSeconds)}
-            hint={samples(stats.responseSamples, "accepted ticket")}
-          />
-          <Stat
-            label="Rating"
-            value={stats.averageRating === null ? "—" : `${Math.round(stats.averageRating * 100)}%`}
-            hint={votes === 0 ? "No thumbs yet" : `${stats.ratingUp} up · ${stats.ratingDown} down`}
-          />
-          <Stat
-            label="Conversation"
-            value={stats.averageConversationSeconds === null ? "—" : duration(stats.averageConversationSeconds)}
-            hint={samples(stats.conversationSamples, "closed chat")}
-          />
-        </div>
-      </section>
-      <section className="panel">
-        <h2>Ratings</h2>
-        <p className="muted">
-          {stats.ratingSkipped
-            ? `${stats.ratingSkipped} ${stats.ratingSkipped === 1 ? "visitor" : "visitors"} skipped the review.`
-            : "Skipped reviews are not part of the score."}
-        </p>
-      </section>
-    </>
+    <section className="panel">
+      <h2>The desk</h2>
+      <p className="muted">Averages across human chats. AI conversations are not included in the times.</p>
+      <div className="stats">
+        <Stat
+          label="Response time"
+          value={stats.averageResponseSeconds === null ? "—" : duration(stats.averageResponseSeconds)}
+          hint={samples(stats.responseSamples, "accepted ticket")}
+        />
+        <Stat
+          label="Rating"
+          value={stats.averageRating === null ? "—" : `${Math.round(stats.averageRating * 100)}%`}
+          hint={votes === 0 ? "No thumbs yet" : `${stats.ratingUp} up · ${stats.ratingDown} down`}
+        />
+        <Stat
+          label="Conversation"
+          value={stats.averageConversationSeconds === null ? "—" : duration(stats.averageConversationSeconds)}
+          hint={samples(stats.conversationSamples, "closed chat")}
+        />
+        <Stat
+          label="Skipped"
+          value={String(stats.ratingSkipped)}
+          hint={stats.ratingSkipped ? "Not part of the score" : "Skipped reviews stay out of the score"}
+        />
+      </div>
+    </section>
   );
 }
 

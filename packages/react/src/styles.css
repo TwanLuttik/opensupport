@@ -417,12 +417,23 @@
   font-weight: 620;
   cursor: pointer;
   text-align: left;
+  transition:
+    border-color 180ms ease,
+    background-color 180ms ease,
+    color 180ms ease,
+    transform 180ms ease,
+    box-shadow 180ms ease;
 }
 
 .osb-topic:hover,
 .osb-topic.is-selected {
   border-color: var(--osb-accent);
   background: color-mix(in srgb, var(--osb-accent) 8%, var(--osb-panel));
+}
+
+.osb-topic:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(17, 24, 39, 0.08);
 }
 
 .osb-topic:disabled {
@@ -483,6 +494,12 @@
   resize: vertical;
 }
 
+.osb-topic:disabled {
+  opacity: 0.55;
+  cursor: default;
+  transform: none;
+}
+
 .osb-archive {
   border: 0;
   background: transparent;
@@ -490,9 +507,8 @@
   padding: 0;
   font: inherit;
   font-size: 13px;
-  font-weight: 600;
-  text-decoration: underline;
-  text-underline-offset: 3px;
+  font-weight: 500;
+  text-decoration: none;
   cursor: pointer;
 }
 
@@ -734,6 +750,58 @@
   padding: 5px 12px;
   font-size: 12.5px;
   text-align: center;
+}
+
+.osb-message-system .osb-joined {
+  display: inline-flex;
+  width: max-content;
+  max-width: 100%;
+  align-items: center;
+  justify-content: center;
+  padding: 5px 12px;
+  background: color-mix(in srgb, var(--osb-accent) 10%, transparent);
+  color: var(--osb-ink);
+  transition: background-color 280ms ease, color 280ms ease;
+}
+
+.osb-join {
+  display: grid;
+}
+
+.osb-join-wait,
+.osb-join-done {
+  grid-area: 1 / 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  white-space: nowrap;
+  transition: opacity 280ms ease, transform 280ms ease;
+}
+
+.osb-joined.is-settled .osb-join-wait {
+  display: none;
+}
+
+.osb-join-done {
+  opacity: 0;
+  transform: translateY(4px);
+}
+
+.osb-joined.is-settled .osb-join-done {
+  opacity: 1;
+  transform: none;
+}
+
+.osb-joined .osb-provided-mark {
+  width: 14px;
+  height: 14px;
+  transform: scale(0.4);
+  transition: transform 320ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.osb-joined.is-settled .osb-provided-mark {
+  transform: scale(1);
 }
 
 .osb-provided {
@@ -1176,10 +1244,15 @@
 @media (prefers-reduced-motion: reduce) {
   .osb-panel,
   .osb-launcher,
+  .osb-topic,
   .osb-spinner,
   .osb-spinner-ink,
   .osb-waiting-dot,
-  .osb-typing > span {
+  .osb-typing > span,
+  .osb-join-wait,
+  .osb-join-done,
+  .osb-joined,
+  .osb-joined .osb-provided-mark {
     animation: none;
     transition: none;
   }
